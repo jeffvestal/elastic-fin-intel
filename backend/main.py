@@ -50,7 +50,7 @@ class EmailDraftRequest(BaseModel):
     time_unit: Optional[str] = "hours"
 
 app = FastAPI(
-    title="Portfolio-Pilot-AI",
+    title="Elastic Fin-Intel",
     description="An AI-powered insights dashboard for financial analysts.",
     version="1.0.0",
 )
@@ -94,7 +94,7 @@ def get_all_tool_definitions() -> List[Dict[str, Any]]:
 @app.on_event("startup")
 async def startup_event():
     """Initialize MCP servers on startup"""
-    logger.info("Starting Portfolio-Pilot-AI with MCP client manager")
+    logger.info("Starting Elastic Fin-Intel with MCP client manager")
     
     try:
         # Load all configured servers

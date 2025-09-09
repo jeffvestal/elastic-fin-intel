@@ -42,7 +42,7 @@ class MCPConfigManager:
             "servers": {
                 "local": {
                     "id": "local", 
-                    "name": "Portfolio-Pilot-AI (Local)",
+                    "name": "Elastic Fin-Intel (Local)",
                     "url": "http://localhost:8000",
                     "api_key": None,
                     "transport": "http",

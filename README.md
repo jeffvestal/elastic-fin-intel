@@ -1,8 +1,8 @@
-# Portfolio-Pilot-AI
+# Elastic Fin-Intel
 
 ## Project Overview
 
-Portfolio-Pilot-AI is an AI-powered financial analyst dashboard that demonstrates cutting-edge integration with Elasticsearch's built-in MCP (Model Context Protocol) server. This application showcases a dual-layer architecture combining traditional financial dashboards with conversational AI capabilities, all powered by real financial data stored in Elasticsearch.
+Elastic Fin-Intel is an AI-powered financial analyst dashboard that demonstrates cutting-edge integration with Elasticsearch's built-in MCP (Model Context Protocol) server. This application showcases a dual-layer architecture combining traditional financial dashboards with conversational AI capabilities, all powered by real financial data stored in Elasticsearch.
 
 ## Key Features
 
@@ -244,7 +244,7 @@ Your MCP server should support these tools:
 ### 1. Clone the Repository
 ```bash
 git clone <repository-url>
-cd portfolio-pilot-ai
+cd elastic-fin-intel
 ```
 
 ### 2. Backend Setup

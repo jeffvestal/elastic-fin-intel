@@ -115,7 +115,7 @@ class MCPClient:
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "Portfolio-Pilot-AI/1.0"
+                "User-Agent": "Elastic Fin-Intel/1.0"
             }
             
             if self.server.api_key:
@@ -157,7 +157,7 @@ class MCPClient:
             method="initialize",
             params={
                 "clientInfo": {
-                    "name": "Portfolio-Pilot-AI",
+                    "name": "Elastic Fin-Intel",
                     "version": "1.0.0"
                 },
                 "protocolVersion": "2025-06-18",

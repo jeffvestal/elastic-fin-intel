@@ -1,5 +1,5 @@
 """
-Common utility functions shared across Portfolio-Pilot-AI data generation scripts.
+Common utility functions shared across Elastic Fin-Intel data generation scripts.
 
 This module contains reusable functions for API calls, file operations, and data processing
 used by multiple data generation scripts.

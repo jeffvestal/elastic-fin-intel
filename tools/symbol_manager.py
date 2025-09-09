@@ -1,5 +1,5 @@
 """
-Symbol management utilities for Portfolio-Pilot-AI data generation.
+Symbol management utilities for Elastic Fin-Intel data generation.
 
 This module provides helper functions for working with stock, ETF, and bond symbols,
 including validation, filtering, and random selection utilities.

@@ -1,5 +1,5 @@
 """
-Central symbol and asset configuration for Portfolio-Pilot-AI synthetic data generation.
+Central symbol and asset configuration for Elastic Fin-Intel synthetic data generation.
 
 This module contains all stock, ETF, and bond definitions used across the data generation scripts.
 Update symbols here to affect all scripts that use them.

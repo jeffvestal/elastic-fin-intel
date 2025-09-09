@@ -10,7 +10,7 @@ const Header = ({ toggleChat, toggleColorMode, currentMode }) => {
     <AppBar position="static">
       <Toolbar>
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          Portfolio-Pilot-AI
+          Elastic Fin-Intel
         </Typography>
         <Box>
           <Button color="inherit" component={Link} to="/">Overview</Button>

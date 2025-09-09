@@ -1,5 +1,5 @@
 """
-Shared configuration constants for Portfolio-Pilot-AI data generation scripts.
+Shared configuration constants for Elastic Fin-Intel data generation scripts.
 
 This module centralizes all configuration settings used across the data generation tools.
 Update settings here to affect all scripts that use them.
