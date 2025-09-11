@@ -1,6 +1,307 @@
 {
   "created_at": 1752091905.988878,
-  "servers": {},
-  "updated_at": 1752785100.7437189,
+  "servers": {
+    "new-server-1757468615484": {
+      "api_key": "bGJWSk1aa0JhQXVMbzFpQlJHQTI6S3gyMVRETHJDMXlzS1RYY056LV9UZw==",
+      "connection_status": "disconnected",
+      "conversation_field": null,
+      "conversation_location": "response",
+      "enabled": true,
+      "id": "new-server-1757468615484",
+      "last_connected": 1757556212.231858,
+      "name": "es",
+      "tools": {
+        "financial_accounts_descriptions": {
+          "description": "This tool is a unified search function designed to query and retrieve interconnected data from three distinct financial indices.\n  ---\nindex 1: financial_accounts\nThis index contains information about individual client accounts.\n\nPrimary Data:\n- Account Name\n- Risk Profile\n\nPurpose: Use this index to identify and retrieve accounts based on owner or risk characteristics.\n---\nIndex 2: financial_asset_details\nThis index contains detailed information about financial assets, identified by their market symbol.\n\nPrimary Data:\n- symbol (e.g., GOOGL, AAPL)\n- instrument_type (e.g., Stock, Bond, ETF)\n- closing_price\n- sector (e.g., Technology, Healthcare)\n\nPurpose: Use this index to look up specific details about any financial instrument.\n\nIndex 3: financial_holdings\nThis index links accounts to the assets they own.\n\nPrimary Data:\n- symbol (identifies the asset)\n- quantity (how many units are held)\n- price (the acquisition price)\n- date (the transaction date)\n\nPurpose: Use this index to see what assets an account holds, how many, and when they were acquired.\n\nHow the Indices Connect\nThe financial_accounts index links to the financial_holdings index via a shared account identifier.\n\nThe financial_holdings index links to the financial_asset_details index via the shared symbol.\n\nThis structure allows a query to start with an account name, find all its holdings, and then look up the detailed sector and pricing information for each of those holdings.",
+          "enabled": true,
+          "name": "financial_accounts_descriptions",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "nlQuery": {
+                "description": "A natural language query expressing the search request",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nlQuery"
+            ],
+            "type": "object"
+          }
+        },
+        "financial_metricstotal_accounts": {
+          "description": "Count of active portfolios.",
+          "enabled": true,
+          "name": "financial_metricstotal_accounts",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "financial_metricstotal_aum": {
+          "description": "Total portfolio value across all accounts.",
+          "enabled": true,
+          "name": "financial_metricstotal_aum",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "financial_metricstotal_news": {
+          "description": "Count of market updates/news articles.",
+          "enabled": true,
+          "name": "financial_metricstotal_news",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "financial_metricstotal_reports": {
+          "description": "Count of analyst insights/reports.",
+          "enabled": true,
+          "name": "financial_metricstotal_reports",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "financial_neg_news_reports_with_pos": {
+          "description": "Find News and Reports with Negative Sentiment over a set time duration.",
+          "enabled": true,
+          "name": "financial_neg_news_reports_with_pos",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "time_duration": {
+                "description": "The timeframe to search back. Format is \"X days|hours|minutes\" eg. \"7 days\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "time_duration"
+            ],
+            "type": "object"
+          }
+        },
+        "financial_news_and_reports": {
+          "description": "This tool is a unified search function designed to query and retrieve related data from financial news and reports.\n  ---\n  index 1: financial_news\nThis index contains News reports about financial companies and positions.\n\nPrimary Data:\n- Company Symbol\n- Content - both text and semantic\n- Sentiment\n- Title\n- Published Date\n\nPurpose: Use this index to find news articles about financial companies, stocks, futures, ETFs.\n---\nIndex 2: financial_reports\nThis index contains News reports about financial companies and positions.\n\nPrimary Data:\n- Company Symbol\n- Content - both text and semantic\n- Sentiment\n- Title\n- Published Date\n\nPurpose: Use this index to find financial reports about financial companies, stocks, futures, ETFs.\n\n\nHow the Indices Connect\nThe financial_news index links to the financial_reports index via a shared primary_symbol.\n\nThis structure allows a query to find news and reports for a financial symbol optionally for a given time",
+          "enabled": true,
+          "name": "financial_news_and_reports",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "nlQuery": {
+                "description": "A natural language query expressing the search request",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nlQuery"
+            ],
+            "type": "object"
+          }
+        },
+        "news_report_per_symbol_timerange": {
+          "description": "Find News and Reports about a specific Symbol. Includes details about the Symbol. Restricts search from now - set time range.\n\n**Only use this when a user asks about News and or Reports AND provides Both a Symbol and TimeRange**",
+          "enabled": true,
+          "name": "news_report_per_symbol_timerange",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "symbol": {
+                "description": "The financial symbol to look up. eg \"ESTC\"",
+                "type": "string"
+              },
+              "time_duration": {
+                "description": "The timeframe to search back. Format is \"X days|hours|minutes\" eg. \"7 days\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "time_duration",
+              "symbol"
+            ],
+            "type": "object"
+          }
+        },
+        "platform_coreexecute_esql": {
+          "description": "Execute an ES|QL query and return the results in a tabular format.\n\n**IMPORTANT**: This tool only **runs** queries; it does not write them.\nThink of this as the final step after a query has been prepared.\n\nYou **must** get the query from one of two sources before calling this tool:\n1.  The output of the `platform.core.generate_esql` tool (if the tool is available).\n2.  A verbatim query provided directly by the user.\n\nUnder no circumstances should you invent, guess, or modify a query yourself for this tool.\nIf you need a query, use the `platform.core.generate_esql` tool first.",
+          "enabled": true,
+          "name": "platform_coreexecute_esql",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "query": {
+                "description": "The ES|QL query to execute",
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          }
+        },
+        "platform_coregenerate_esql": {
+          "description": "Generate an ES|QL query from a natural language query.",
+          "enabled": true,
+          "name": "platform_coregenerate_esql",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "context": {
+                "description": "(optional) Additional context that could be useful to generate the ES|QL query",
+                "type": "string"
+              },
+              "index": {
+                "description": "(optional) Index to search against. If not provided, will use the index explorer to find the best index to use.",
+                "type": "string"
+              },
+              "query": {
+                "description": "A natural language query to generate an ES|QL query from.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          }
+        },
+        "platform_coreget_document_by_id": {
+          "description": "Retrieve the full content (source) of an Elasticsearch document based on its ID and index name.",
+          "enabled": true,
+          "name": "platform_coreget_document_by_id",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "ID of the document to retrieve",
+                "type": "string"
+              },
+              "index": {
+                "description": "Name of the index to retrieve the document from",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "index"
+            ],
+            "type": "object"
+          }
+        },
+        "platform_coreget_index_mapping": {
+          "description": "Retrieve mappings for the specified index or indices.",
+          "enabled": true,
+          "name": "platform_coreget_index_mapping",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "indices": {
+                "description": "List of indices to retrieve mappings for.",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "indices"
+            ],
+            "type": "object"
+          }
+        },
+        "platform_coreindex_explorer": {
+          "description": "List relevant indices, aliases and datastreams based on a natural language query.\n\nThe 'indexPattern' parameter can be used to filter indices by a specific pattern, e.g. 'foo*'.\nThis should *only* be used if you know what you're doing (e.g. if the user explicitly specified a pattern).\nOtherwise, leave it empty to search against all indices.\n\n*Example:*\nUser: \"Show me my latest alerts\"\nYou: call tool 'index_explorer' with { query: 'indices containing user alerts' }\nTool result: [{ type: \"index\", name: '.alerts' }]\n",
+          "enabled": true,
+          "name": "platform_coreindex_explorer",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "indexPattern": {
+                "description": "(optional) Index pattern to filter indices by. Defaults to *.",
+                "type": "string"
+              },
+              "limit": {
+                "description": "(optional) Limit the max number of indices to return. Defaults to 1.",
+                "type": "number"
+              },
+              "query": {
+                "description": "A natural language query to infer which indices, aliases or datastreams to use.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          }
+        },
+        "platform_corelist_indices": {
+          "description": "List the indices, aliases and datastreams from the Elasticsearch cluster.\n\nThe 'pattern' optional parameter is an index pattern which can be used to filter resources.\nThis parameter should only be used when you already know of a specific pattern to filter on,\ne.g. if the user provided one. Otherwise, do not try to invent or guess a pattern.",
+          "enabled": true,
+          "name": "platform_corelist_indices",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "pattern": {
+                "default": "*",
+                "description": "Index pattern to match Elasticsearch indices, aliases and datastream names.\n      - Correct examples: '.logs-*', '*data*', 'metrics-prod-*', 'my-specific-index', '*'\n      - Should only be used if you are certain of a specific index pattern to filter on. *Do not try to guess*.\n      - Defaults to '*' to match all indices.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "platform_coresearch": {
+          "description": "A powerful tool for searching and analyzing data within your Elasticsearch cluster.\nIt supports both full-text relevance searches and structured analytical queries.\n\nUse this tool for any query that involves finding documents, counting, aggregating, or summarizing data from a known index.\n\nExamples of queries:\n- \"find articles about serverless architecture\"\n- \"search for support tickets mentioning 'billing issue' or 'refund request'\"\n- \"what is our policy on parental leave?\"\n- \"list all products where the category is 'electronics'\"\n- \"show me the last 5 documents from that index\"\n- \"show me the sales over the last year break down by month\"\n\nNote:\n- The 'index' parameter can be used to specify which index to search against.\n If not provided, the tool will decide itself which is the best index to use.\n- It is perfectly fine not to specify the 'index' parameter. It should only be specified when you already\n know about the index and fields you want to search on, e.g. if the user explicitly specified it.\n    ",
+          "enabled": true,
+          "name": "platform_coresearch",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "index": {
+                "description": "(optional) Index to search against. If not provided, will automatically select the best index to use based on the query.",
+                "type": "string"
+              },
+              "query": {
+                "description": "A natural language query expressing the search request",
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      "transport": "http",
+      "url": "https://fin-data-bc5882.kb.us-central1.gcp.elastic.cloud:443/api/chat/mcp",
+      "use_for_main_page": true
+    }
+  },
+  "updated_at": 1757556212.330025,
   "version": "1.0"
 }

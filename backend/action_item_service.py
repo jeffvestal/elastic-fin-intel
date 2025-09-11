@@ -6,6 +6,7 @@ import logging
 import json
 from typing import Dict, List, Any, Optional
 from es_data_client import es_data_client
+from mcp_data_service import mcp_data_service
 from mcp_config import config_manager
 from mcp_client import mcp_manager
 
@@ -19,37 +20,17 @@ class ActionItemService:
         self.logger = logging.getLogger(f"{__name__}.ActionItemService")
     
     async def get_top_accounts_by_position_value(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get top accounts by total position value"""
+        """Get top accounts by total position value using MCP tools"""
         try:
-            # Query to get accounts with their total portfolio values
-            response = await es_data_client.client.search(
-                index="financial_accounts",
-                body={
-                    "query": {"match_all": {}},
-                    "size": limit,
-                    "sort": [{"total_portfolio_value": {"order": "desc"}}]
-                }
-            )
+            # Use MCP data service instead of direct ES query
+            top_accounts = await mcp_data_service.get_top_accounts(limit)
             
-            top_accounts = []
-            for hit in response["hits"]["hits"]:
-                source = hit["_source"]
-                account_data = {
-                    "account_id": hit["_id"],
-                    "account_name": source.get("account_holder_name", "Unknown Account"),
-                    "total_portfolio_value": source.get("total_portfolio_value", 0),
-                    "account_type": source.get("account_type", "Unknown"),
-                    "state": source.get("state", "Unknown"),
-                    "risk_profile": source.get("risk_profile", "Unknown")
-                }
-                top_accounts.append(account_data)
-            
-            self.logger.info(f"Found {len(top_accounts)} top accounts by position value")
+            self.logger.info(f"Found {len(top_accounts)} top accounts by position value via MCP")
             return top_accounts
             
         except Exception as e:
-            self.logger.error(f"Error getting top accounts by position value: {e}")
-            return []
+            self.logger.error(f"Error getting top accounts by position value via MCP: {e}")
+            raise
     
     async def get_action_item_analysis(self, time_period: int = 48, time_unit: str = "hours") -> Dict[str, Any]:
         """Get action item analysis for top accounts with negative news"""
@@ -126,8 +107,8 @@ class ActionItemService:
             for server_id, server in main_page_servers.items():
                 try:
                     # Check if server has the required tool
-                    if "neg_news_reports_with_pos" not in server.tools:
-                        self.logger.warning(f"Server {server_id} does not have neg_news_reports_with_pos tool")
+                    if "financial_neg_news_reports_with_pos" not in server.tools:
+                        self.logger.warning(f"Server {server_id} does not have financial_neg_news_reports_with_pos tool")
                         continue
                     
                     # Get alerts from this server
@@ -165,21 +146,22 @@ class ActionItemService:
         """Get negative news alerts from a specific MCP server"""
         alerts = []
         
-        self.logger.info(f"Calling neg_news_reports_with_pos tool on server {server_id}")
+        self.logger.info(f"Calling financial_neg_news_reports_with_pos tool on server {server_id}")
         
-        # Prepare arguments for the neg_news_reports_with_pos tool
+        # Prepare arguments for the financial_neg_news_reports_with_pos tool
         arguments = {
             "time_duration": f"{time_period} {time_unit}"
         }
         
         try:
-            async for result in mcp_manager.execute_tool(server_id, "neg_news_reports_with_pos", arguments):
+            async for result in mcp_manager.execute_tool(server_id, "financial_neg_news_reports_with_pos", arguments):
                 if result["type"] == "tool_result":
                     content = result["content"]
                     if isinstance(content, dict) and "text" in content:
                         try:
                             data = json.loads(content["text"])
-                            self.logger.info(f"Got neg_news_reports_with_pos data from server {server_id}")
+                            self.logger.info(f"Got financial_neg_news_reports_with_pos data from server {server_id}")
+                            self.logger.info(f"Raw MCP response data: {json.dumps(data, indent=2)[:1000]}...")
                             
                             # Parse the alerts from the response (reuse existing parsing logic)
                             alerts = await self._parse_alerts_response(data)
@@ -192,21 +174,37 @@ class ActionItemService:
                             self.logger.warning(f"Could not parse response as JSON: {e}")
                     break
                 elif result["type"] == "error":
-                    self.logger.error(f"Error from neg_news_reports_with_pos tool: {result.get('error', 'Unknown error')}")
+                    self.logger.error(f"Error from financial_neg_news_reports_with_pos tool: {result.get('error', 'Unknown error')}")
                     break
                     
         except Exception as e:
-            self.logger.error(f"Error executing neg_news_reports_with_pos tool: {e}")
+            self.logger.error(f"Error executing financial_neg_news_reports_with_pos tool: {e}")
         
         return alerts
     
     async def _parse_alerts_response(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Parse the response from neg_news_reports_with_pos tool"""
+        """Parse the response from financial_neg_news_reports_with_pos tool"""
         alerts = []
         
         try:
-            # Standard ES response with hits
-            if "result" in data and "hits" in data["result"]:
+            # First try MCP tabular_data format (new MCP tools)
+            if "results" in data:
+                for result in data["results"]:
+                    if result.get("type") == "tabular_data" and "data" in result:
+                        tabular_data = result["data"]
+                        columns = tabular_data.get("columns", [])
+                        values = tabular_data.get("values", [])
+                        
+                        col_map = {col.get("name", f"col_{i}"): i for i, col in enumerate(columns)}
+                        
+                        for row in values:
+                            alert = self._create_alert_from_row(row, col_map)
+                            if alert:
+                                alerts.append(alert)
+                        break
+            
+            # Fallback: Standard ES response with hits
+            elif "result" in data and "hits" in data["result"]:
                 hits = data["result"]["hits"]["hits"]
                 for hit in hits:
                     source = hit.get("_source", {})
@@ -225,7 +223,7 @@ class ActionItemService:
                     }
                     alerts.append(alert)
             
-            # ES|QL response with values and columns
+            # Fallback: ES|QL response with values and columns
             elif "result" in data and "values" in data["result"]:
                 columns = data["result"].get("columns", [])
                 values = data["result"].get("values", [])
@@ -236,6 +234,8 @@ class ActionItemService:
                     alert = self._create_alert_from_row(row, col_map)
                     if alert:
                         alerts.append(alert)
+            
+            self.logger.info(f"Parsed {len(alerts)} alerts from response")
                         
         except Exception as e:
             self.logger.error(f"Error parsing alerts response: {e}")
@@ -257,18 +257,27 @@ class ActionItemService:
             if not account_id:
                 return None
             
+            # Calculate position value from quantity and purchase_price if available
+            quantity = get_col_value("quantity", 0)
+            purchase_price = get_col_value("purchase_price", 0)
+            position_value = float(quantity) * float(purchase_price) if quantity and purchase_price else 0
+            
+            # Get content from title or content field
+            content = get_col_value("content", "")
+            title = get_col_value("title", "")
+            
             return {
                 "account_id": str(account_id),
-                "account_name": str(get_col_value("account_name", get_col_value("account_holder_name"))),
+                "account_name": str(get_col_value("account_holder_name", get_col_value("account_name"))),
                 "symbol": str(symbol),
-                "company_name": str(get_col_value("company_name")),
-                "position_value": float(get_col_value("position_value", 0)) if get_col_value("position_value") else 0,
-                "news_title": str(get_col_value("title") or get_col_value("news_title")),
-                "news_summary": str(get_col_value("summary") or get_col_value("news_summary"))[:200] + "..." if str(get_col_value("summary") or get_col_value("news_summary")) else "",
+                "company_name": str(get_col_value("asset_name", get_col_value("company_name"))),
+                "position_value": position_value,
+                "news_title": str(title),
+                "news_summary": str(content)[:200] + "..." if content else "",
                 "sentiment": str(get_col_value("sentiment", "negative")),
-                "published_date": str(get_col_value("published_date")),
-                "news_source": str(get_col_value("source", get_col_value("news_source"))),
-                "document_id": str(get_col_value("document_id", get_col_value("_id")))
+                "published_date": str(get_col_value("published_date", get_col_value("report_date"))),
+                "news_source": str(get_col_value("_index", "Unknown")),
+                "document_id": str(get_col_value("article_id", get_col_value("report_id", "")))
             }
         except Exception as e:
             self.logger.warning(f"Error creating alert from row: {e}")

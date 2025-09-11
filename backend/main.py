@@ -18,6 +18,7 @@ from mcp_client import mcp_manager, MCPServer, MCPTransportType, MCPClientError,
 from mcp_config import config_manager
 from conversation_manager import conversation_manager
 from es_data_client import es_data_client
+from mcp_data_service import mcp_data_service
 from main_page_data_service import main_page_data_service
 from negative_news_alerts_service import negative_news_alerts_service
 from account_news_reports_service import account_news_reports_service
@@ -146,8 +147,8 @@ async def shutdown_event():
 async def get_metrics_overview(include_news: bool = False, include_reports: bool = False):
     """Get overview metrics for the financial dashboard"""
     try:
-        # Get base metrics from ES
-        metrics = await es_data_client.get_metrics_overview()
+        # Get base metrics from MCP tools
+        metrics = await mcp_data_service.get_accounts_overview()
         metrics["impact_summary"] = impact_summary_global
         
         # Only include news summary if requested (e.g., after "Start Day" is clicked)
@@ -166,7 +167,7 @@ async def get_metrics_overview(include_news: bool = False, include_reports: bool
         
         return metrics
     except Exception as e:
-        logger.error(f"Error fetching metrics overview: {e}")
+        logger.error(f"Error fetching metrics overview via MCP: {e}")
         return {
             "total_accounts": 0,
             "total_aum": 0,

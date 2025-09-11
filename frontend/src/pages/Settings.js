@@ -12,12 +12,35 @@ import {
     IconButton,
     Stack,
     FormControlLabel,
-    CircularProgress
+    CircularProgress,
+    Divider,
+    Radio,
+    RadioGroup,
+    FormControl,
+    FormLabel,
+    Slider,
+    Card,
+    CardContent,
+    Chip
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { useDemoMode } from '../contexts/DemoModeContext';
+import { useMCPDisplaySettings } from '../contexts/MCPDisplaySettingsContext';
 
 const Settings = () => {
+    const { isDemoMode, toggleDemoMode } = useDemoMode();
+    const {
+        displayMode,
+        autoCollapseTime,
+        showExecutionHistory,
+        bannerPosition,
+        updateDisplayMode,
+        updateAutoCollapseTime,
+        updateShowExecutionHistory,
+        updateBannerPosition,
+        resetToDefaults
+    } = useMCPDisplaySettings();
     const [settings, setSettings] = useState(null);
     const [newServerUrl, setNewServerUrl] = useState('');
     const [newServerApiKey, setNewServerApiKey] = useState('');
@@ -27,17 +50,35 @@ const Settings = () => {
     const [refreshingServers, setRefreshingServers] = useState(new Set());
 
     useEffect(() => {
-        // Fetch server settings
+        // Fetch server settings with fallback for demo mode
         fetch('/settings')
-            .then(res => res.json())
+            .then(res => res.ok ? res.json() : Promise.reject('Backend not available'))
             .then(data => setSettings(data))
-            .catch(err => console.error("Failed to fetch settings:", err));
+            .catch(err => {
+                console.log("Backend not available, using demo settings");
+                // Set demo settings when backend is not available
+                setSettings({
+                    demo_server: {
+                        name: "Demo MCP Server",
+                        url: "http://localhost:3001",
+                        enabled: true,
+                        status: "connected",
+                        tools: {
+                            search_tool: { enabled: true, description: "Search financial data" },
+                            analysis_tool: { enabled: true, description: "Analyze market trends" }
+                        }
+                    }
+                });
+            });
         
-        // Fetch logging status
+        // Fetch logging status with fallback
         fetch('/settings/logging')
-            .then(res => res.json())
+            .then(res => res.ok ? res.json() : Promise.reject('Backend not available'))
             .then(data => setLoggingEnabled(data.enabled))
-            .catch(err => console.error("Failed to fetch logging status:", err));
+            .catch(err => {
+                console.log("Backend not available, using demo logging setting");
+                setLoggingEnabled(false);
+            });
     }, []);
 
     const handleToggle = (server, tool = null) => {
@@ -60,7 +101,7 @@ const Settings = () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newSettings),
-        });
+        }).catch(err => console.log("Settings update skipped - backend not available"));
     };
 
     const handleMainPageToggle = (serverId) => {
@@ -118,14 +159,36 @@ const Settings = () => {
             setNewServerUseForMainPage(false);
         })
         .catch(error => {
-            console.error('Failed to add server:', error);
-            alert(`Error adding server: ${error.message}`);
+            console.log('Backend not available - simulating server add for demo');
+            // Add server to local state for demo purposes
+            const demoServer = {
+                id: serverData.id,
+                name: serverData.name,
+                url: serverData.url,
+                enabled: true,
+                status: "demo",
+                tools: {
+                    demo_tool: { enabled: true, description: "Demo tool for presentation" }
+                }
+            };
+            const newSettings = { ...settings, [demoServer.id]: demoServer };
+            setSettings(newSettings);
+            setNewServerName('');
+            setNewServerUrl('');
+            setNewServerApiKey('');
+            setNewServerUseForMainPage(false);
         });
     };
 
     const handleRemoveServer = (serverId) => {
         fetch(`/servers/${serverId}`, { method: 'DELETE' })
         .then(() => {
+            const newSettings = { ...settings };
+            delete newSettings[serverId];
+            setSettings(newSettings);
+        })
+        .catch(err => {
+            console.log('Backend not available - removing server from demo state');
             const newSettings = { ...settings };
             delete newSettings[serverId];
             setSettings(newSettings);
@@ -139,7 +202,8 @@ const Settings = () => {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: isEnabled }),
-        });
+        })
+        .catch(err => console.log('Backend not available - logging toggle saved locally only'));
     };
 
     const handleRefreshTools = async (serverId) => {
@@ -165,8 +229,22 @@ const Settings = () => {
             }));
             
         } catch (error) {
-            console.error('Failed to refresh tools:', error);
-            alert(`Error refreshing tools: ${error.message}`);
+            console.log('Backend not available - simulating tool refresh');
+            // Simulate tool refresh for demo
+            const currentServer = settings[serverId];
+            if (currentServer) {
+                const refreshedServer = {
+                    ...currentServer,
+                    tools: {
+                        ...currentServer.tools,
+                        refreshed_tool: { enabled: true, description: "Refreshed demo tool" }
+                    }
+                };
+                setSettings(prev => ({
+                    ...prev,
+                    [serverId]: refreshedServer
+                }));
+            }
         } finally {
             // Remove server from refreshing set
             setRefreshingServers(prev => {
@@ -185,6 +263,148 @@ const Settings = () => {
         <Box sx={{ maxWidth: 800, mx: 'auto' }}>
             <Typography variant="h4" gutterBottom>MCP Settings</Typography>
             
+            {/* MCP Display Settings */}
+            <Card sx={{ mb: 4 }}>
+                <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        MCP Tools Display Settings
+                        <Chip size="small" label="New" color="primary" />
+                    </Typography>
+                    
+                    <Stack spacing={3}>
+                        {/* Display Mode */}
+                        <FormControl component="fieldset">
+                            <FormLabel component="legend" sx={{ mb: 1 }}>
+                                Display Mode
+                            </FormLabel>
+                            <RadioGroup
+                                row
+                                value={displayMode}
+                                onChange={(e) => updateDisplayMode(e.target.value)}
+                            >
+                                <FormControlLabel 
+                                    value="floating" 
+                                    control={<Radio />} 
+                                    label={
+                                        <Box>
+                                            <Typography variant="body2" fontWeight={500}>Floating Button</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                Top-right floating action button
+                                            </Typography>
+                                        </Box>
+                                    } 
+                                />
+                                <FormControlLabel 
+                                    value="banner" 
+                                    control={<Radio />} 
+                                    label={
+                                        <Box>
+                                            <Typography variant="body2" fontWeight={500}>Top Banner</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                Horizontal banner at top of page
+                                            </Typography>
+                                        </Box>
+                                    } 
+                                />
+                                <FormControlLabel 
+                                    value="both" 
+                                    control={<Radio />} 
+                                    label={
+                                        <Box>
+                                            <Typography variant="body2" fontWeight={500}>Both</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                Show both banner and floating button
+                                            </Typography>
+                                        </Box>
+                                    } 
+                                />
+                            </RadioGroup>
+                        </FormControl>
+
+                        {/* Auto-collapse Timer */}
+                        {displayMode !== 'floating' && (
+                            <Box>
+                                <Typography variant="body2" fontWeight={500} gutterBottom>
+                                    Auto-collapse Timer: {autoCollapseTime} seconds
+                                </Typography>
+                                <Slider
+                                    value={autoCollapseTime}
+                                    onChange={(e, value) => updateAutoCollapseTime(value)}
+                                    min={1}
+                                    max={10}
+                                    step={1}
+                                    marks
+                                    valueLabelDisplay="auto"
+                                    sx={{ mt: 1 }}
+                                />
+                                <Typography variant="caption" color="text.secondary">
+                                    Banner will auto-collapse after this many seconds
+                                </Typography>
+                            </Box>
+                        )}
+
+                        {/* Banner Position (only if banner is enabled) */}
+                        {(displayMode === 'banner' || displayMode === 'both') && (
+                            <FormControl component="fieldset">
+                                <FormLabel component="legend" sx={{ mb: 1 }}>
+                                    Banner Position
+                                </FormLabel>
+                                <RadioGroup
+                                    row
+                                    value={bannerPosition}
+                                    onChange={(e) => updateBannerPosition(e.target.value)}
+                                >
+                                    <FormControlLabel 
+                                        value="top" 
+                                        control={<Radio />} 
+                                        label="Top (below header)" 
+                                    />
+                                    <FormControlLabel 
+                                        value="bottom" 
+                                        control={<Radio />} 
+                                        label="Bottom (above footer)" 
+                                    />
+                                </RadioGroup>
+                            </FormControl>
+                        )}
+
+                        {/* Show Execution History */}
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={showExecutionHistory}
+                                    onChange={(e) => updateShowExecutionHistory(e.target.checked)}
+                                />
+                            }
+                            label={
+                                <Box>
+                                    <Typography variant="body2" fontWeight={500}>Show Execution History</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Display history of completed MCP tool executions
+                                    </Typography>
+                                </Box>
+                            }
+                        />
+
+                        {/* Actions */}
+                        <Stack direction="row" spacing={2} sx={{ pt: 2 }}>
+                            <Button 
+                                variant="outlined" 
+                                onClick={resetToDefaults}
+                                size="small"
+                            >
+                                Reset to Defaults
+                            </Button>
+                            <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                                Current: {displayMode === 'floating' ? 'Floating Button' : displayMode === 'banner' ? 'Top Banner' : 'Both'}, 
+                                {displayMode !== 'floating' && ` ${autoCollapseTime}s auto-collapse,`}
+                                {showExecutionHistory ? ' with history' : ' no history'}
+                            </Typography>
+                        </Stack>
+                    </Stack>
+                </CardContent>
+            </Card>
+            
             <Paper sx={{ p: 3, mb: 4 }}>
                 <Typography variant="h6" gutterBottom>Register New Server</Typography>
                 <Stack spacing={2} sx={{ mb: 2 }}>
@@ -202,7 +422,7 @@ const Settings = () => {
                         fullWidth
                         value={newServerUrl}
                         onChange={(e) => setNewServerUrl(e.target.value)}
-                        placeholder="e.g., http://localhost:5601"
+                        placeholder="e.g., http://localhost:5601/api/chat/mcp"
                     />
                     <TextField
                         label="API Key (optional)"
@@ -233,10 +453,24 @@ const Settings = () => {
 
             <Paper sx={{ p: 3, mb: 4 }}>
                 <Typography variant="h6" gutterBottom>Global Settings</Typography>
+                
+                <FormControlLabel
+                    control={<Switch checked={isDemoMode} onChange={toggleDemoMode} />}
+                    label="Demo Mode"
+                />
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ ml: 4, mb: 2 }}>
+                    Enables simplified UI optimized for presentations and demos
+                </Typography>
+                
+                <Divider sx={{ my: 2 }} />
+                
                 <FormControlLabel
                     control={<Switch checked={loggingEnabled} onChange={handleLoggingToggle} />}
                     label="Enable MCP Communication Logging"
                 />
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ ml: 4 }}>
+                    Enables detailed logging of MCP tool communications
+                </Typography>
             </Paper>
 
             {Object.entries(settings).map(([serverId, server]) => (

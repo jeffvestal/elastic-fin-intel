@@ -70,13 +70,7 @@ class ESDataClient:
             
         except Exception as e:
             logger.error(f"Error fetching metrics overview: {e}")
-            # Return fallback data
-            return {
-                "total_accounts": 0,
-                "total_aum": 0,
-                "total_news": 0,
-                "total_reports": 0
-            }
+            raise
     
     async def get_account_details(self, account_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed account information including holdings and relevant news"""
