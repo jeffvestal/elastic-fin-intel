@@ -11,24 +11,29 @@ export const useMCPDisplaySettings = () => {
 };
 
 export const MCPDisplaySettingsProvider = ({ children }) => {
-  const [displayMode, setDisplayMode] = useState('floating'); // 'floating', 'banner', 'both'
+  const [displayMode, setDisplayMode] = useState('both'); // 'floating', 'banner', 'both'
   const [autoCollapseTime, setAutoCollapseTime] = useState(5); // seconds
   const [showExecutionHistory, setShowExecutionHistory] = useState(true);
-  const [bannerPosition, setBannerPosition] = useState('top'); // 'top', 'bottom'
+  const [bannerPosition, setBannerPosition] = useState('bottom'); // 'top', 'bottom'
 
   // Load settings from localStorage on mount
   useEffect(() => {
     const savedSettings = localStorage.getItem('mcpDisplaySettings');
+    console.log('🔧 MCPDisplaySettings: Loading from localStorage:', savedSettings);
+    
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
-        setDisplayMode(parsed.displayMode || 'floating');
+        console.log('🔧 MCPDisplaySettings: Parsed settings:', parsed);
+        setDisplayMode(parsed.displayMode || 'both');
         setAutoCollapseTime(parsed.autoCollapseTime || 5);
         setShowExecutionHistory(parsed.showExecutionHistory ?? true);
-        setBannerPosition(parsed.bannerPosition || 'top');
+        setBannerPosition(parsed.bannerPosition || 'bottom');
       } catch (error) {
         console.warn('Failed to parse MCP display settings from localStorage:', error);
       }
+    } else {
+      console.log('🔧 MCPDisplaySettings: No saved settings, using defaults');
     }
   }, []);
 
@@ -68,10 +73,10 @@ export const MCPDisplaySettingsProvider = ({ children }) => {
 
   const resetToDefaults = () => {
     const defaults = {
-      displayMode: 'floating',
+      displayMode: 'both',
       autoCollapseTime: 5,
       showExecutionHistory: true,
-      bannerPosition: 'top'
+      bannerPosition: 'bottom'
     };
     saveSettings(defaults);
   };
@@ -79,6 +84,14 @@ export const MCPDisplaySettingsProvider = ({ children }) => {
   // Computed properties for convenience
   const showFloating = displayMode === 'floating' || displayMode === 'both';
   const showBanner = displayMode === 'banner' || displayMode === 'both';
+  
+  // Debug logging for computed properties
+  useEffect(() => {
+    console.log('🔧 MCPDisplaySettings: Display mode:', displayMode);
+    console.log('🔧 MCPDisplaySettings: Show banner:', showBanner);
+    console.log('🔧 MCPDisplaySettings: Show floating:', showFloating);
+    console.log('🔧 MCPDisplaySettings: Banner position:', bannerPosition);
+  }, [displayMode, showBanner, showFloating, bannerPosition]);
 
   const value = {
     // Settings

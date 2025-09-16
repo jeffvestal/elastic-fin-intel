@@ -6,7 +6,7 @@ This is separate from MCP and provides direct ES access for the financial analys
 import os
 import logging
 from typing import List, Dict, Any, Optional
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -36,30 +36,46 @@ class ESDataClient:
         """Get overview metrics for the dashboard"""
         try:
             # Get total accounts count
-            accounts_response = await self.client.count(index="financial_accounts")
-            total_accounts = accounts_response["count"]
+            try:
+                accounts_response = await self.client.count(index="financial_accounts")
+                total_accounts = accounts_response["count"]
+            except NotFoundError:
+                logger.info("Index 'financial_accounts' not found - returning 0 accounts count")
+                total_accounts = 0
             
             # Get total AUM by aggregating portfolio values
-            aum_response = await self.client.search(
-                index="financial_accounts",
-                body={
-                    "size": 0,
-                    "aggs": {
-                        "total_aum": {
-                            "sum": {"field": "total_portfolio_value"}
+            try:
+                aum_response = await self.client.search(
+                    index="financial_accounts",
+                    body={
+                        "size": 0,
+                        "aggs": {
+                            "total_aum": {
+                                "sum": {"field": "total_portfolio_value"}
+                            }
                         }
                     }
-                }
-            )
-            total_aum = aum_response["aggregations"]["total_aum"]["value"] or 0
+                )
+                total_aum = aum_response["aggregations"]["total_aum"]["value"] or 0
+            except NotFoundError:
+                logger.info("Index 'financial_accounts' not found - returning 0 AUM")
+                total_aum = 0
             
             # Get total news count
-            news_response = await self.client.count(index="financial_news")
-            total_news = news_response["count"]
+            try:
+                news_response = await self.client.count(index="financial_news")
+                total_news = news_response["count"]
+            except NotFoundError:
+                logger.info("Index 'financial_news' not found - returning 0 news count")
+                total_news = 0
             
             # Get total reports count
-            reports_response = await self.client.count(index="financial_reports")
-            total_reports = reports_response["count"]
+            try:
+                reports_response = await self.client.count(index="financial_reports")
+                total_reports = reports_response["count"]
+            except NotFoundError:
+                logger.info("Index 'financial_reports' not found - returning 0 reports count")
+                total_reports = 0
             
             return {
                 "total_accounts": total_accounts,
@@ -70,7 +86,13 @@ class ESDataClient:
             
         except Exception as e:
             logger.error(f"Error fetching metrics overview: {e}")
-            raise
+            # Return empty data instead of raising
+            return {
+                "total_accounts": 0,
+                "total_aum": 0,
+                "total_news": 0,
+                "total_reports": 0
+            }
     
     async def get_account_details(self, account_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed account information including holdings and relevant news"""
@@ -161,6 +183,9 @@ class ESDataClient:
                 for hit in response["hits"]["hits"]
             ]
             
+        except NotFoundError:
+            logger.info("Index 'financial_accounts' not found - returning empty accounts list")
+            return []
         except Exception as e:
             logger.error(f"Error fetching all accounts: {e}")
             return []
@@ -218,6 +243,9 @@ class ESDataClient:
                 for hit in response["hits"]["hits"]
             ]
             
+        except NotFoundError:
+            logger.info("Index 'financial_news' not found - returning empty news list")
+            return []
         except Exception as e:
             logger.error(f"Error fetching all news: {e}")
             return []
@@ -252,6 +280,9 @@ class ESDataClient:
                 for hit in response["hits"]["hits"]
             ]
             
+        except NotFoundError:
+            logger.info("Index 'financial_reports' not found - returning empty reports list")
+            return []
         except Exception as e:
             logger.error(f"❌ ES Client: Error fetching all reports: {e}", exc_info=True)
             return []

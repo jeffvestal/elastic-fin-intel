@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Card, CardContent, Grid, Typography, Modal, Box, TextField, List, ListItem, ListItemText, Collapse, CircularProgress, Alert, Chip } from '@mui/material';
+import { Button, Card, CardContent, Grid, Typography, Modal, Box, TextField, List, ListItem, ListItemText, Collapse, CircularProgress, Alert, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, InputAdornment, IconButton } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
 import { useMCPNotification } from '../contexts/MCPNotificationContext';
+import { usePageContext } from '../contexts/PageContextProvider';
 import EmailDraftPopup from '../components/EmailDraftPopup';
 import axios from 'axios';
 
@@ -27,6 +30,7 @@ const AccountDrilldown = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { showMCPTool, hideMCPTool } = useMCPNotification();
+  const { setCurrentAccount, setCurrentPath } = usePageContext();
   const [account, setAccount] = useState(null);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailData, setEmailData] = useState(null);
@@ -34,41 +38,59 @@ const AccountDrilldown = () => {
   const [emailError, setEmailError] = useState(null);
   const [articleModalOpen, setArticleModalOpen] = useState(false);
   const [articleContent, setArticleContent] = useState('');
-  const [newsReports, setNewsReports] = useState(null);
-  const [newsReportsLoading, setNewsReportsLoading] = useState(false);
-  const [newsReportsError, setNewsReportsError] = useState(null);
-  const [expandedArticles, setExpandedArticles] = useState(new Set());
-  const [summaries, setSummaries] = useState(new Map());
-  const [summarizingArticles, setSummarizingArticles] = useState(new Set());
+  const [tradeHistory, setTradeHistory] = useState(null);
+  const [tradeHistoryLoading, setTradeHistoryLoading] = useState(false);
+  const [tradeHistoryError, setTradeHistoryError] = useState(null);
+  const [symbolFilter, setSymbolFilter] = useState('');
 
   useEffect(() => {
     const fetchAccount = async () => {
       const response = await axios.get(`http://localhost:8000/account/${accountId}`);
       setAccount(response.data);
+      
+      // Set account context for chat
+      setCurrentAccount({
+        account_id: response.data.account_id,
+        account_name: response.data.account_name,
+        balance: response.data.holdings?.reduce((sum, holding) => sum + (holding.current_value || 0), 0) || 0,
+        type: response.data.type,
+        risk_profile: response.data.risk_profile,
+        holdings: response.data.holdings || []
+      });
     };
     fetchAccount();
-  }, [accountId]);
+    
+    // Set current path for page context
+    setCurrentPath(`/account/${accountId}`);
+  }, [accountId, setCurrentAccount, setCurrentPath]);
+
+  // Cleanup account context when component unmounts
+  useEffect(() => {
+    return () => {
+      setCurrentAccount(null);
+    };
+  }, [setCurrentAccount]);
 
   useEffect(() => {
-    const fetchNewsReports = async () => {
-      const notificationId = showMCPTool('news_and_report_lookup_with_symbol_detail', 'Analyzing news and reports for account symbols');
+    const fetchTradeHistory = async () => {
+      const notificationId = showMCPTool('utilities_tradingrecent-trades', 'Fetching recent trade history for account', 'Elastic Financial');
 
-      setNewsReportsLoading(true);
-      setNewsReportsError(null);
+      setTradeHistoryLoading(true);
+      setTradeHistoryError(null);
       try {
-        const response = await axios.get(`http://localhost:8000/account/${accountId}/news-reports?time_period=72&time_unit=hours`);
-        setNewsReports(response.data);
+        const response = await axios.get(`http://localhost:8000/account/${accountId}/trades`);
+        setTradeHistory(response.data);
       } catch (err) {
-        console.error('Error fetching news/reports:', err);
-        setNewsReportsError('Failed to load news and reports');
+        console.error('Error fetching trade history:', err);
+        setTradeHistoryError('Failed to load trade history');
       } finally {
-        setNewsReportsLoading(false);
+        setTradeHistoryLoading(false);
         hideMCPTool(notificationId);
       }
     };
 
     if (accountId) {
-      fetchNewsReports();
+      fetchTradeHistory();
     }
   }, [accountId]); // Removed showMCPTool, hideMCPTool from dependencies as they're stable
 
@@ -146,7 +168,7 @@ const AccountDrilldown = () => {
     setArticleContent('');
   };
 
-  const handleBackToAlerts = () => {
+  const handleBackNavigation = () => {
     // Check if we came from alerts page and preserve state
     const fromAlerts = location.state?.fromAlerts;
     if (fromAlerts) {
@@ -160,109 +182,27 @@ const AccountDrilldown = () => {
         }
       });
     } else {
-      // Fallback to normal navigation
-      navigate('/alerts');
+      // Default to accounts page
+      navigate('/accounts');
     }
   };
 
-  const handleToggleArticle = (articleIndex) => {
-    const newExpanded = new Set(expandedArticles);
-    if (newExpanded.has(articleIndex)) {
-      newExpanded.delete(articleIndex);
-    } else {
-      newExpanded.add(articleIndex);
-    }
-    setExpandedArticles(newExpanded);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const getSentimentColor = (sentiment) => {
-    if (!sentiment) return 'default';
-    const sent = sentiment.toLowerCase();
-    if (sent.includes('positive')) return 'success';
-    if (sent.includes('negative')) return 'error';
-    if (sent.includes('neutral')) return 'warning';
-    return 'default';
-  };
-
-  const getSentimentLabel = (sentiment) => {
-    if (!sentiment) return 'Unknown';
-    const sent = sentiment.toLowerCase();
-    if (sent.includes('positive')) return 'Positive';
-    if (sent.includes('negative')) return 'Negative';
-    if (sent.includes('neutral')) return 'Neutral';
-    return sentiment;
-  };
-
-  const handleSummarizeArticle = async (article, articleIndex) => {
-    if (summaries.has(articleIndex)) {
-      // If summary already exists, don't regenerate
-      return;
-    }
-
-    const notificationId = showMCPTool('Chat Completion LLM', `Generating personalized summary for ${article.symbol || 'article'}`);
-
-    // Add to summarizing set
-    setSummarizingArticles(prev => new Set(prev).add(articleIndex));
-
-    try {
-      const response = await fetch('http://localhost:8000/article/summarize', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          article_content: article.content || article.summary || '',
-          symbol: article.symbol || '',
-          account_id: accountId
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body.getReader();
-      let summary = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = new TextDecoder().decode(value);
-        summary += chunk;
-
-        // Update summary in real-time as it streams
-        setSummaries(prev => new Map(prev).set(articleIndex, summary));
-      }
-
-    } catch (error) {
-      console.error('Error summarizing article:', error);
-      setSummaries(prev => new Map(prev).set(articleIndex, 'Error generating summary. Please try again.'));
-    } finally {
-      // Remove from summarizing set
-      setSummarizingArticles(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(articleIndex);
-        return newSet;
-      });
-      hideMCPTool(notificationId);
-    }
-  };
 
   if (!account) return <div>Loading...</div>;
+
+  // Calculate total account balance from holdings
+  const totalBalance = account.holdings?.reduce((sum, holding) => {
+    return sum + (holding.current_value || 0);
+  }, 0) || 0;
+
+  // Filter holdings and trades based on symbol filter
+  const filteredHoldings = account.holdings?.filter(holding => 
+    holding.symbol?.toLowerCase().includes(symbolFilter.toLowerCase())
+  ) || [];
+
+  const filteredTrades = tradeHistory?.trades?.filter(trade => 
+    trade.symbol?.toLowerCase().includes(symbolFilter.toLowerCase())
+  ) || [];
 
   return (
     <Grid container spacing={3}>
@@ -271,23 +211,112 @@ const AccountDrilldown = () => {
           <Button
             variant="outlined"
             startIcon={<ArrowBackIcon />}
-            onClick={handleBackToAlerts}
+            onClick={handleBackNavigation}
             sx={{ mb: 2 }}
           >
-            Back to Alerts
+            Back
           </Button>
         </Box>
         <Typography variant="h4">{account.account_name}</Typography>
-        <Typography variant="subtitle1">{account.state} - {account.type} - {account.risk_profile}</Typography>
       </Grid>
+      
+      {/* Account Summary Card */}
       <Grid item xs={12}>
-        <Button variant="contained" onClick={handleEmailModalOpen}>Draft Email</Button>
+        <Card>
+          <CardContent>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box>
+                  <Typography variant="body2" color="textSecondary" gutterBottom>
+                    Account ID
+                  </Typography>
+                  <Typography variant="h6">
+                    {account.account_id || 'N/A'}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box>
+                  <Typography variant="body2" color="textSecondary" gutterBottom>
+                    Account Balance
+                  </Typography>
+                  <Typography variant="h6" color="success.main">
+                    ${totalBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box>
+                  <Typography variant="body2" color="textSecondary" gutterBottom>
+                    Account Type
+                  </Typography>
+                  <Typography variant="h6">
+                    {account.type || 'N/A'}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box>
+                  <Typography variant="body2" color="textSecondary" gutterBottom>
+                    Risk Level
+                  </Typography>
+                  <Typography variant="h6">
+                    {account.risk_profile || 'N/A'}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box>
+                  <Typography variant="body2" color="textSecondary" gutterBottom>
+                    Status
+                  </Typography>
+                  <Typography variant="h6">
+                    {account.state || 'N/A'}
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      <Grid item xs={12}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Button variant="contained" onClick={handleEmailModalOpen}>Draft Email</Button>
+          <TextField
+            label="Filter by Symbol"
+            variant="outlined"
+            size="small"
+            value={symbolFilter}
+            onChange={(e) => setSymbolFilter(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+              endAdornment: symbolFilter && (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSymbolFilter('')}
+                    edge="end"
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ width: 250 }}
+            placeholder="e.g. AAPL, CORP_BOND_ENG_I"
+          />
+        </Box>
       </Grid>
       <Grid item xs={12} md={6}>
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>Holdings</Typography>
-            {account.holdings.map((holding, index) => (
+            {filteredHoldings?.map((holding, index) => (
               <Box
                 key={index}
                 sx={{
@@ -300,205 +329,154 @@ const AccountDrilldown = () => {
                 }}
               >
                 <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                  {holding.symbol} - {holding.company_name}
+                  {holding.symbol}
                 </Typography>
 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={3}>
                     <Typography variant="caption" color="textSecondary">
                       Shares
                     </Typography>
                     <Typography variant="body1" fontWeight="medium">
-                      {holding.total_quantity?.toLocaleString()}
+                      {holding.quantity?.toLocaleString()}
                     </Typography>
                   </Grid>
 
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={3}>
                     <Typography variant="caption" color="textSecondary">
-                      Total Value
+                      Current Value
                     </Typography>
                     <Typography variant="body1" fontWeight="medium" color="success.main">
-                      ${holding.total_current_value?.toLocaleString()}
+                      ${holding.current_value?.toLocaleString()}
                     </Typography>
                   </Grid>
 
-                  <Grid item xs={12} sm={4}>
+                  <Grid item xs={12} sm={3}>
                     <Typography variant="caption" color="textSecondary">
-                      Sector
+                      Purchase Price
                     </Typography>
                     <Typography variant="body1">
-                      {holding.sector}
+                      ${holding.purchase_price?.toFixed(2)}
+                    </Typography>
+                  </Grid>
+
+                  <Grid item xs={12} sm={3}>
+                    <Typography variant="caption" color="textSecondary">
+                      Gain/Loss
+                    </Typography>
+                    <Typography 
+                      variant="body1" 
+                      fontWeight="medium"
+                      color={holding.gain_loss >= 0 ? "success.main" : "error.main"}
+                    >
+                      ${holding.gain_loss?.toLocaleString()} ({holding.gain_loss_percent?.toFixed(2)}%)
                     </Typography>
                   </Grid>
                 </Grid>
               </Box>
             ))}
+            {(!filteredHoldings || filteredHoldings.length === 0) && (
+              <Typography variant="body2" color="textSecondary">
+                Holdings data not available for this account.
+              </Typography>
+            )}
           </CardContent>
         </Card>
       </Grid>
       <Grid item xs={12} md={6}>
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>Relevant News & Reports</Typography>
+            <Typography variant="h6" gutterBottom>Trade History</Typography>
 
-            {newsReportsLoading && (
+            {tradeHistoryLoading && (
               <Box display="flex" justifyContent="center" alignItems="center" py={4}>
                 <CircularProgress size={40} />
                 <Typography variant="body2" sx={{ ml: 2 }}>
-                  Loading news and reports for account symbols...
+                  Loading trade history...
                 </Typography>
               </Box>
             )}
 
-            {newsReportsError && (
+            {tradeHistoryError && (
               <Alert severity="error" sx={{ mb: 2 }}>
-                {newsReportsError}
+                {tradeHistoryError}
               </Alert>
             )}
 
-            {newsReports && newsReports.status === 'no_servers' && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  No MCP Servers Configured
-                </Typography>
-                <Typography variant="body2">
-                  {newsReports.message}
-                </Typography>
-              </Alert>
-            )}
-
-            {newsReports && newsReports.status === 'tool_not_available' && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Required Tool Not Available
-                </Typography>
-                <Typography variant="body2">
-                  The MCP server does not support the news/reports lookup tool.
-                </Typography>
-              </Alert>
-            )}
-
-            {newsReports && newsReports.status === 'no_data' && (
+            {tradeHistory && (!tradeHistory.trades || tradeHistory.trades.length === 0) && (
               <Alert severity="info" sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  No Recent News or Reports
+                  No Trades Found
                 </Typography>
                 <Typography variant="body2">
-                  No news or reports found for this account's symbols in the last 72 hours.
+                  No trades found for this account.
                 </Typography>
               </Alert>
             )}
 
-            {newsReports && newsReports.status === 'success' && (
+            {filteredTrades && filteredTrades.length > 0 && (
               <>
                 <Box mb={2}>
                   <Typography variant="body2" color="textSecondary" gutterBottom>
-                    Found {newsReports.articles?.length || 0} articles for symbols: {newsReports.symbols_searched?.join(', ')}
+                    Found {filteredTrades.length} trades
                   </Typography>
                 </Box>
 
-                {newsReports.articles?.map((article, index) => (
-                  <Box key={index} sx={{ mb: 2 }}>
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        cursor: 'pointer',
-                        '&:hover': { backgroundColor: 'action.hover' }
-                      }}
-                    >
-                      <CardContent
-                        onClick={() => handleToggleArticle(index)}
-                        sx={{ pb: expandedArticles.has(index) ? 1 : 2 }}
-                      >
-                        <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                          <Box sx={{ flexGrow: 1, mr: 2 }}>
-                            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                              {article.title}
-                            </Typography>
-                            <Box display="flex" gap={1} mb={1} flexWrap="wrap">
-                              <Chip label={article.symbol} size="small" color="primary" />
-                              <Chip label={article.type} size="small" variant="outlined" />
-                              <Chip
-                                label={getSentimentLabel(article.sentiment)}
-                                size="small"
-                                color={getSentimentColor(article.sentiment)}
-                                variant="filled"
-                              />
-                              {article.published_date && (
-                                <Chip label={formatDate(article.published_date)} size="small" variant="outlined" />
-                              )}
-                            </Box>
-                            {!expandedArticles.has(index) && article.summary && (
-                              <Typography variant="body2" color="textSecondary">
-                                {article.summary}
-                              </Typography>
-                            )}
-                          </Box>
-                          <Box>
-                            {expandedArticles.has(index) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                          </Box>
-                        </Box>
-
-                        <Collapse in={expandedArticles.has(index)}>
-                          <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, mb: 2 }}>
-                              {article.content || article.summary || 'No content available'}
-                            </Typography>
-
-                            {/* Summarize Button */}
-                            <Box sx={{ mb: 2 }}>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSummarizeArticle(article, index);
-                                }}
-                                disabled={summarizingArticles.has(index)}
-                                sx={{ mr: 1 }}
-                              >
-                                {summarizingArticles.has(index) ? (
-                                  <>
-                                    <CircularProgress size={16} sx={{ mr: 1 }} />
-                                    Summarizing...
-                                  </>
-                                ) : (
-                                  summaries.has(index) ? 'Update Summary' : 'Summarize'
-                                )}
-                              </Button>
-                            </Box>
-
-                            {/* Summary Display */}
-                            {summaries.has(index) && (
-                              <Box sx={{
-                                mt: 2,
-                                p: 2,
-                                backgroundColor: 'background.default',
-                                borderRadius: 1,
-                                border: '1px solid',
-                                borderColor: 'divider'
-                              }}>
-                                <Typography variant="subtitle2" fontWeight="bold" gutterBottom color="primary">
-                                  AI Summary - Portfolio Impact Analysis
-                                </Typography>
-                                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                                  {summaries.get(index)}
-                                </Typography>
-                              </Box>
-                            )}
-
-                            {article.source && (
-                              <Typography variant="caption" color="textSecondary" sx={{ mt: 2, display: 'block' }}>
-                                Source: {article.source}
-                              </Typography>
-                            )}
-                          </Box>
-                        </Collapse>
-                      </CardContent>
-                    </Card>
-                  </Box>
-                ))}
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Symbol</strong></TableCell>
+                        <TableCell><strong>Date</strong></TableCell>
+                        <TableCell align="right"><strong>Quantity</strong></TableCell>
+                        <TableCell align="right"><strong>Price</strong></TableCell>
+                        <TableCell align="right"><strong>Total</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredTrades.map((trade, index) => (
+                        <TableRow key={index} hover>
+                          <TableCell>
+                            <Chip 
+                              label={trade.symbol} 
+                              size="small" 
+                              color="primary" 
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {trade.purchase_date ? new Date(trade.purchase_date).toLocaleDateString() : 'N/A'}
+                          </TableCell>
+                          <TableCell align="right">
+                            {trade.quantity?.toLocaleString() || 'N/A'}
+                          </TableCell>
+                          <TableCell align="right">
+                            ${typeof trade.purchase_price === 'number' ? 
+                              trade.purchase_price.toFixed(2) : 
+                              'N/A'}
+                          </TableCell>
+                          <TableCell align="right">
+                            ${(typeof trade.purchase_price === 'number' && typeof trade.quantity === 'number') ? 
+                              (trade.purchase_price * trade.quantity).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 
+                              'N/A'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               </>
+            )}
+
+            {(!filteredTrades || filteredTrades.length === 0) && !tradeHistoryLoading && !tradeHistoryError && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  No Trades Found
+                </Typography>
+                <Typography variant="body2">
+                  {symbolFilter ? `No trades found matching "${symbolFilter}"` : 'No trades found for this account.'}
+                </Typography>
+              </Alert>
             )}
           </CardContent>
         </Card>

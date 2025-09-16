@@ -10,10 +10,12 @@ import MCPToolBanner from './components/MCPToolBanner';
 import MCPExecutionPanel from './components/MCPExecutionPanel';
 import AnimatedRoutes from './components/AnimatedRoutes';
 import GlobalStyles from './styles/GlobalStyles';
-import Chat from './pages/Chat';
+import GlobalChat from './components/GlobalChat';
 import { MCPNotificationProvider } from './contexts/MCPNotificationContext';
 import { DemoModeProvider, useDemoMode } from './contexts/DemoModeContext';
 import { MCPDisplaySettingsProvider, useMCPDisplaySettings } from './contexts/MCPDisplaySettingsContext';
+import { AppModeProvider } from './contexts/AppModeContext';
+import { PageContextProvider } from './contexts/PageContextProvider';
 
 const getDesignTokens = (mode, isDemoMode = false) => ({
   palette: {
@@ -402,13 +404,19 @@ const getDesignTokens = (mode, isDemoMode = false) => ({
 });
 
 function App() {
-  const [mode, setMode] = useState('dark');
-  const [chatOpen, setChatOpen] = useState(false);
+  const [mode, setMode] = useState(() => {
+    const savedMode = localStorage.getItem('themeMode');
+    return savedMode || 'dark';
+  });
 
   const colorMode = useMemo(
     () => ({
       toggleColorMode: () => {
-        setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+        setMode((prevMode) => {
+          const newMode = prevMode === 'light' ? 'dark' : 'light';
+          localStorage.setItem('themeMode', newMode);
+          return newMode;
+        });
       },
     }),
     [],
@@ -425,48 +433,64 @@ function App() {
         <CssBaseline />
         <GlobalStyles />
         <Router>
-          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-            <Header toggleChat={toggleChat} toggleColorMode={colorMode.toggleColorMode} currentMode={mode} />
-            
-            {/* MCP Tools Banner - Top Position */}
-            {showBanner && bannerPosition === 'top' && <MCPToolBanner />}
-            
-            <Box 
-              component="main" 
-              sx={{ 
-                flexGrow: 1, 
-                p: isDemoMode ? 4 : 3,
-                transition: 'all 0.3s ease'
-              }}
-            >
-              <AnimatedRoutes />
+          <PageContextProvider>
+            <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+              <Header toggleColorMode={colorMode.toggleColorMode} currentMode={mode} />
+              
+              {/* MCP Tools Banner - Top Position */}
+              {showBanner && bannerPosition === 'top' && <MCPToolBanner />}
+              
+              <Box 
+                component="main" 
+                sx={{ 
+                  flexGrow: 1, 
+                  p: isDemoMode ? 4 : 3,
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <AnimatedRoutes />
+              </Box>
+              
+              {/* MCP Tools Banner - Bottom Position */}
+              {showBanner && bannerPosition === 'bottom' && (
+                <Box
+                  sx={{
+                    position: 'sticky',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    zIndex: 1100,
+                    width: '100%'
+                  }}
+                >
+                  <MCPToolBanner />
+                </Box>
+              )}
+              
             </Box>
             
-            {/* MCP Tools Banner - Bottom Position */}
-            {showBanner && bannerPosition === 'bottom' && <MCPToolBanner />}
+            {/* Global Chat Component */}
+            <GlobalChat />
             
-            <Chat open={chatOpen} toggleChat={toggleChat} />
-          </Box>
-          
-          {/* Floating MCP Tools Notification */}
-          {showFloating ? <MCPToolNotification key={`floating-${showFloating}-${displayMode}`} /> : null}
-          
-          {/* Demo Mode MCP Execution Panel (legacy) - Disabled to prevent duplication with modern MCP tools display */}
-          {/* {isDemoMode && <MCPExecutionPanel />} */}
+            {/* Floating MCP Tools Notification */}
+            {showFloating ? <MCPToolNotification key={`floating-${showFloating}-${displayMode}`} /> : null}
+            
+            {/* Demo Mode MCP Execution Panel (legacy) - Disabled to prevent duplication with modern MCP tools display */}
+            {/* {isDemoMode && <MCPExecutionPanel />} */}
+          </PageContextProvider>
         </Router>
       </ThemeProvider>
     );
   };
 
-  const toggleChat = () => {
-    setChatOpen(!chatOpen);
-  };
 
   return (
     <DemoModeProvider>
       <MCPNotificationProvider>
         <MCPDisplaySettingsProvider>
-          <AppContent />
+          <AppModeProvider>
+            <AppContent />
+          </AppModeProvider>
         </MCPDisplaySettingsProvider>
       </MCPNotificationProvider>
     </DemoModeProvider>

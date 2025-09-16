@@ -52,10 +52,14 @@ class MCPServer:
     conversation_location: str = "response"   # Where to find/send conversation ID: "response" or "params"
     # Main page data settings
     use_for_main_page: bool = False          # Whether to use this server for main page data enhancement
+    # App mode settings
+    app_modes: Optional[List[str]] = None    # App modes this server is available for: ["portfolio", "customer-success", "both"]
     
     def __post_init__(self):
         if self.tools is None:
             self.tools = {}
+        if self.app_modes is None:
+            self.app_modes = ["both"]  # Default to both modes if not specified
     
     def to_dict(self) -> Dict[str, Any]:
         result = asdict(self)

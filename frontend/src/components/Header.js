@@ -9,7 +9,10 @@ import {
   Avatar,
   Chip,
   Stack,
-  alpha
+  alpha,
+  Switch,
+  FormControlLabel,
+  Divider
 } from '@mui/material';
 import { Link, useLocation } from 'react-router-dom';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
@@ -21,13 +24,18 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ArticleIcon from '@mui/icons-material/Article';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { useAppMode } from '../contexts/AppModeContext';
+import { usePageContext } from '../contexts/PageContextProvider';
 
-const Header = ({ toggleChat, toggleColorMode, currentMode }) => {
+const Header = ({ toggleColorMode, currentMode }) => {
   const location = useLocation();
   const { isDemoMode } = useDemoMode();
-  
-  const navItems = [
+  const { appMode, isPortfolioMode, isCustomerSuccessMode, toggleAppMode } = useAppMode();
+  const { globalChatOpen, setGlobalChatOpen } = usePageContext();
+
+  const portfolioNavItems = [
     { path: '/', label: 'Overview', icon: <DashboardIcon /> },
     { path: '/alerts', label: 'Alerts', icon: <TrendingDownIcon /> },
     { path: '/accounts', label: 'Accounts', icon: <AccountBalanceIcon /> },
@@ -35,7 +43,16 @@ const Header = ({ toggleChat, toggleColorMode, currentMode }) => {
     { path: '/reports', label: 'Reports', icon: <AssessmentIcon /> },
   ];
 
+  const customerSuccessNavItems = [
+    { path: '/customer-success', label: 'Customer Search', icon: <SupportAgentIcon /> },
+  ];
+
+  const navItems = isPortfolioMode ? portfolioNavItems : customerSuccessNavItems;
+
   const isActiveRoute = (path) => {
+    if (isCustomerSuccessMode && path === '/customer-success') {
+      return location.pathname === '/customer-success';
+    }
     return location.pathname === path;
   };
 
@@ -85,20 +102,31 @@ const Header = ({ toggleChat, toggleColorMode, currentMode }) => {
                 backgroundClip: 'text',
               }}
             >
-              Elastic Fin-Intel
+              {isPortfolioMode ? 'Elastic Fin-Intel' : 'Elastic Customer Success'}
             </Typography>
-            {isDemoMode && (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+              {isDemoMode && (
+                <Chip 
+                  label="Demo Mode" 
+                  size="small" 
+                  color="secondary"
+                  sx={{ 
+                    fontSize: '0.7rem',
+                    height: 18,
+                  }}
+                />
+              )}
               <Chip 
-                label="Demo Mode" 
+                label={isPortfolioMode ? 'Portfolio Manager' : 'Customer Success'} 
                 size="small" 
-                color="secondary"
+                color="primary"
+                variant="outlined"
                 sx={{ 
                   fontSize: '0.7rem',
                   height: 18,
-                  mt: 0.5,
                 }}
               />
-            )}
+            </Stack>
           </Box>
         </Box>
 
@@ -132,7 +160,7 @@ const Header = ({ toggleChat, toggleColorMode, currentMode }) => {
           
           {/* Chat Button */}
           <Button
-            onClick={toggleChat}
+            onClick={() => setGlobalChatOpen(!globalChatOpen)}
             startIcon={<ChatBubbleOutlineIcon />}
             variant="outlined"
             size={isDemoMode ? 'large' : 'medium'}
@@ -142,7 +170,8 @@ const Header = ({ toggleChat, toggleColorMode, currentMode }) => {
               py: isDemoMode ? 1 : 0.5,
               borderRadius: isDemoMode ? 12 : 8,
               textTransform: 'none',
-              borderColor: (theme) => theme.palette.divider,
+              borderColor: (theme) => globalChatOpen ? theme.palette.primary.main : theme.palette.divider,
+              backgroundColor: (theme) => globalChatOpen ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
               '&:hover': {
                 backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.08),
                 borderColor: (theme) => theme.palette.primary.main,
@@ -152,8 +181,44 @@ const Header = ({ toggleChat, toggleColorMode, currentMode }) => {
             Chat
           </Button>
 
+          {/* App Mode Switcher */}
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isCustomerSuccessMode}
+                onChange={toggleAppMode}
+                size={isDemoMode ? 'medium' : 'small'}
+                sx={{
+                  '& .MuiSwitch-switchBase': {
+                    '&.Mui-checked': {
+                      color: (theme) => theme.palette.secondary.main,
+                      '& + .MuiSwitch-track': {
+                        backgroundColor: (theme) => theme.palette.secondary.main,
+                      },
+                    },
+                  },
+                }}
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <DashboardIcon sx={{ fontSize: '1rem' }} />
+                <Typography variant="caption" sx={{ fontSize: isDemoMode ? '0.75rem' : '0.7rem' }}>
+                  {isPortfolioMode ? 'Portfolio' : 'Customer'}
+                </Typography>
+              </Box>
+            }
+            labelPlacement="start"
+            sx={{ 
+              mr: 2,
+              '& .MuiFormControlLabel-label': {
+                fontSize: isDemoMode ? '0.875rem' : '0.75rem',
+              }
+            }}
+          />
+
           {/* Controls */}
-          <Box sx={{ display: 'flex', alignItems: 'center', ml: 2, gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', ml: 1, gap: 1 }}>
             <IconButton 
               onClick={toggleColorMode} 
               size={isDemoMode ? 'large' : 'medium'}

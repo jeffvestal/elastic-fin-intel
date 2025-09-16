@@ -182,8 +182,18 @@ if ! kill -0 $FRONTEND_PID 2>/dev/null; then
     exit 1
 fi
 
+# Extract the actual port from frontend logs
+FRONTEND_PORT="3000"  # Default fallback
+if [ -f logs/frontend.log ]; then
+    # Look for "Local:" line in the logs and extract port
+    EXTRACTED_PORT=$(grep -o "Local:\s*http://localhost:[0-9]*" logs/frontend.log | grep -o "[0-9]*" | tail -1)
+    if [ ! -z "$EXTRACTED_PORT" ]; then
+        FRONTEND_PORT="$EXTRACTED_PORT"
+    fi
+fi
+
 echo -e "${GREEN}Frontend server started (PID: $FRONTEND_PID)${NC}"
-echo -e "  URL: http://localhost:3000"
+echo -e "  URL: http://localhost:$FRONTEND_PORT"
 echo -e "  Logs: logs/frontend.log"
 
 echo ""
@@ -191,7 +201,7 @@ echo -e "${GREEN}🚀 Both servers are running!${NC}"
 echo -e "${BLUE}Press Ctrl+C to stop both servers${NC}"
 echo ""
 echo -e "Application URLs:"
-echo -e "  ${GREEN}Frontend: http://localhost:3000${NC}"
+echo -e "  ${GREEN}Frontend: http://localhost:$FRONTEND_PORT${NC}"
 echo -e "  ${GREEN}Backend API: http://localhost:8000${NC}"
 echo -e "  ${GREEN}API Documentation: http://localhost:8000/docs${NC}"
 echo ""

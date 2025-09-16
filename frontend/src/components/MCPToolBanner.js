@@ -36,7 +36,7 @@ const BannerContainer = styled(Paper)(({ theme }) => ({
     : `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.95)}, ${alpha(theme.palette.primary.main, 0.05)})`,
   backdropFilter: 'blur(10px)',
   borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-  zIndex: 1200,
+  zIndex: 1100,
   overflow: 'visible',
 }));
 

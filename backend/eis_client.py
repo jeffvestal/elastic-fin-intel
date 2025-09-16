@@ -1,123 +1,126 @@
 import os
 import json
-import aiohttp
 import asyncio
 import traceback
 from dotenv import load_dotenv
+import openai
 
 load_dotenv()
 
-# Azure OpenAI Configuration
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-AZURE_API_VERSION = os.getenv("AZURE_API_VERSION")
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")  # Optional for custom endpoints
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # Default model
+
+# Initialize OpenAI client
+client = None
+if OPENAI_API_KEY:
+    # Remove trailing /chat/completions from base_url if present
+    clean_base_url = OPENAI_BASE_URL
+    if OPENAI_BASE_URL and OPENAI_BASE_URL.endswith('/chat/completions'):
+        clean_base_url = OPENAI_BASE_URL.rsplit('/chat/completions', 1)[0]
+    
+    client = openai.OpenAI(
+        api_key=OPENAI_API_KEY,
+        base_url=clean_base_url if clean_base_url else None
+    )
 
 async def get_chat_response_stream(prompt: str, dynamic_tools: list = None):
     """
     A unified function to handle streaming responses that could be text or tool calls.
-    This makes a single call to Azure OpenAI with a dynamic list of tools.
+    This makes a single call to OpenAI with a dynamic list of tools.
     """
-    request_body = {
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": True,
-        "temperature": 0.7,
-        "max_tokens": 2000
-    }
+    if not client:
+        yield {"error": "OpenAI client not configured. Please set OPENAI_API_KEY environment variable."}
+        return
     
-    # Add tools if provided
-    if dynamic_tools:
-        request_body["tools"] = dynamic_tools
-        request_body["tool_choice"] = "auto"
-    
-    async for result in _make_openai_request(request_body):
+    messages = [{"role": "user", "content": prompt}]
+    async for result in _make_openai_request(messages, dynamic_tools):
         yield result
 
 async def get_chat_response_stream_with_messages(messages: list, dynamic_tools: list = None):
     """
     A unified function to handle streaming responses with full conversation history.
-    This makes a call to Azure OpenAI with a messages array and dynamic list of tools.
+    This makes a call to OpenAI with a messages array and dynamic list of tools.
     """
-    request_body = {
-        "messages": messages,
-        "stream": True,
-        "temperature": 0.7,
-        "max_tokens": 2000
-    }
+    if not client:
+        yield {"error": "OpenAI client not configured. Please set OPENAI_API_KEY environment variable."}
+        return
     
-    # Add tools if provided
-    if dynamic_tools:
-        request_body["tools"] = dynamic_tools
-        request_body["tool_choice"] = "auto"
-    
-    async for result in _make_openai_request(request_body):
+    async for result in _make_openai_request(messages, dynamic_tools):
         yield result
 
-async def _make_openai_request(request_body: dict):
+async def _make_openai_request(messages: list, dynamic_tools: list = None):
     """
-    Shared function to make Azure OpenAI API requests with streaming.
+    Shared function to make OpenAI API requests with streaming.
     """
-    # Construct Azure OpenAI URL
-    full_url = f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT}/chat/completions?api-version={AZURE_API_VERSION}"
-    
-    headers = {
-        "api-key": AZURE_OPENAI_API_KEY,
-        "Content-Type": "application/json",
-    }
-
     try:
-        # Create session with timeout
-        timeout = aiohttp.ClientTimeout(total=300)  # 5 minute timeout
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            print(f"--- CALLING AZURE OPENAI API ---: {full_url}")
-            print(f"--- REQUEST BODY ---: {json.dumps(request_body, indent=2)}")
+        # Prepare request parameters
+        kwargs = {
+            "model": OPENAI_MODEL,
+            "messages": messages,
+            "stream": True,
+            "temperature": 0.7,
+            "max_tokens": 2000
+        }
+        
+        # Add tools if provided
+        if dynamic_tools:
+            kwargs["tools"] = dynamic_tools
+            kwargs["tool_choice"] = "auto"
+        
+        print(f"--- CALLING OPENAI API ---")
+        print(f"--- MODEL ---: {OPENAI_MODEL}")
+        print(f"--- MESSAGES ---: {json.dumps(messages, indent=2)}")
+        if dynamic_tools:
+            print(f"--- TOOLS ---: {len(dynamic_tools)} tools provided")
+        
+        # Create streaming completion
+        stream = client.chat.completions.create(**kwargs)
+        
+        # Process streaming response
+        for chunk in stream:
+            # Convert to dict format for compatibility with existing code
+            chunk_dict = {
+                "choices": []
+            }
             
-            async with session.post(url=full_url, headers=headers, json=request_body) as response:
-                print(f"--- RESPONSE STATUS ---: {response.status}")
-                print(f"--- RESPONSE HEADERS ---: {dict(response.headers)}")
-                
-                if response.status != 200:
-                    error_text = await response.text()
-                    print(f"--- ERROR RESPONSE ---: {error_text}")
-                    yield {"error": f"Azure OpenAI API error {response.status}: {error_text}"}
-                    return
-                
-                response.raise_for_status()
-
-                buffer = b""
-                async for chunk in response.content.iter_chunked(1024):
-                    buffer += chunk
-                    while b"\n" in buffer:
-                        line, buffer = buffer.split(b"\n", 1)
-                        line = line.strip()
-                        if line.startswith(b"data: "):
-                            data_str = line[len(b"data: "):].strip()
-                            if data_str == b"[DONE]":
-                                print("--- STREAM COMPLETED ---")
-                                return
-                            if data_str:  # Skip empty data lines
-                                try:
-                                    parsed_data = json.loads(data_str)
-                                    # Log content and tool calls
-                                    choices = parsed_data.get("choices", [])
-                                    if choices:
-                                        delta = choices[0].get("delta", {})
-                                        content = delta.get("content")
-                                        tool_calls = delta.get("tool_calls")
-                                        
-                                        if content:
-                                            print(f"--- BACKEND PARSED CONTENT ---: '{content}'")
-                                        if tool_calls:
-                                            print(f"--- BACKEND PARSED TOOL CALLS ---: {tool_calls}")
-                                    
-                                    yield parsed_data
-                                except json.JSONDecodeError as json_err:
-                                    print(f"--- JSON DECODE ERROR ---: {json_err} for data: {data_str}")
-                                    continue
-    except aiohttp.ClientError as e:
-        print(f"--- AIOHTTP CLIENT ERROR ---: {e}")
+            if chunk.choices:
+                for choice in chunk.choices:
+                    choice_dict = {
+                        "delta": {},
+                        "finish_reason": choice.finish_reason
+                    }
+                    
+                    if choice.delta.content:
+                        choice_dict["delta"]["content"] = choice.delta.content
+                        print(f"--- BACKEND PARSED CONTENT ---: '{choice.delta.content}'")
+                    
+                    if choice.delta.tool_calls:
+                        choice_dict["delta"]["tool_calls"] = []
+                        for tool_call in choice.delta.tool_calls:
+                            tool_call_dict = {
+                                "index": tool_call.index,
+                                "id": tool_call.id,
+                                "type": tool_call.type,
+                                "function": {}
+                            }
+                            if tool_call.function:
+                                if tool_call.function.name:
+                                    tool_call_dict["function"]["name"] = tool_call.function.name
+                                if tool_call.function.arguments:
+                                    tool_call_dict["function"]["arguments"] = tool_call.function.arguments
+                            choice_dict["delta"]["tool_calls"].append(tool_call_dict)
+                        print(f"--- BACKEND PARSED TOOL CALLS ---: {choice_dict['delta']['tool_calls']}")
+                    
+                    chunk_dict["choices"].append(choice_dict)
+            
+            yield chunk_dict
+            
+    except openai.OpenAIError as e:
+        print(f"--- OPENAI ERROR ---: {e}")
         traceback.print_exc()
-        yield {"error": f"Connection error: {e}"}
+        yield {"error": f"OpenAI API error: {e}"}
     except Exception as e:
         print(f"--- UNEXPECTED ERROR ---: {e}")
         traceback.print_exc()

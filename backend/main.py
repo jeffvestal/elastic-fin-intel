@@ -67,15 +67,19 @@ app.add_middleware(
 # --- In-memory store ---
 impact_summary_global = "No analysis performed yet."
 
-def get_all_tool_definitions() -> List[Dict[str, Any]]:
-    """Gathers all enabled tool definitions from MCP servers."""
+def get_all_tool_definitions(app_mode: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Gathers all enabled tool definitions from MCP servers, optionally filtered by app mode."""
     all_defs = []
     
     # Get all enabled MCP servers and their tools
-    enabled_servers = config_manager.get_enabled_servers()
+    if app_mode:
+        enabled_servers = config_manager.get_servers_for_app_mode(app_mode)
+        logger.info(f"Filtering MCP servers for app_mode: {app_mode}")
+    else:
+        enabled_servers = config_manager.get_enabled_servers()
     
     for server_id, server in enabled_servers.items():
-        logger.debug(f"Processing tools for server {server_id}: {server.name}")
+        logger.debug(f"Processing tools for server {server_id}: {server.name} (modes: {server.app_modes})")
         
         for tool_name, tool in server.tools.items():
             logger.debug(f"Adding MCP tool: {tool_name} from server {server_id}")
@@ -88,7 +92,7 @@ def get_all_tool_definitions() -> List[Dict[str, Any]]:
                 }
             })
     
-    logger.info(f"Collected {len(all_defs)} tool definitions from {len(enabled_servers)} MCP servers")
+    logger.info(f"Collected {len(all_defs)} tool definitions from {len(enabled_servers)} MCP servers (app_mode: {app_mode})")
     return all_defs
 
 
@@ -168,33 +172,316 @@ async def get_metrics_overview(include_news: bool = False, include_reports: bool
         return metrics
     except Exception as e:
         logger.error(f"Error fetching metrics overview via MCP: {e}")
-        return {
-            "total_accounts": 0,
-            "total_aum": 0,
-            "total_news": 0,
-            "total_reports": 0,
-            "impact_summary": impact_summary_global,
-            "news_summary": {
+        # Fall back to direct Elasticsearch queries
+        try:
+            logger.info("Falling back to direct Elasticsearch for metrics overview")
+            metrics = await es_data_client.get_metrics_overview()
+            metrics["impact_summary"] = impact_summary_global
+            metrics["news_summary"] = None if not include_news else {
                 "status": "error",
-                "message": "Error loading news summary",
+                "message": "News summary requires MCP configuration",
                 "news_stories": []
-            } if include_news else None,
-            "reports_summary": {
+            }
+            metrics["reports_summary"] = None if not include_reports else {
                 "status": "error",
-                "message": "Error loading reports summary", 
+                "message": "Reports summary requires MCP configuration", 
                 "reports": []
-            } if include_reports else None
-        }
+            }
+            return metrics
+        except Exception as fallback_error:
+            logger.error(f"Error with Elasticsearch fallback: {fallback_error}")
+            return {
+                "total_accounts": 0,
+                "total_aum": 0,
+                "total_news": 0,
+                "total_reports": 0,
+                "impact_summary": impact_summary_global,
+                "news_summary": None if not include_news else {
+                    "status": "error",
+                    "message": "Error loading news summary",
+                    "news_stories": []
+                },
+                "reports_summary": None if not include_reports else {
+                    "status": "error",
+                    "message": "Error loading reports summary", 
+                    "reports": []
+                }
+            }
+
+@app.get("/account/search")
+async def search_accounts(q: str, app_mode: Optional[str] = None):
+    """Search for accounts using MCP customer lookup tool"""
+    if len(q) < 3:
+        return {"accounts": []}
+    
+    try:
+        # Get servers based on app_mode if provided
+        if app_mode:
+            enabled_servers = config_manager.get_servers_for_app_mode(app_mode)
+            logger.info(f"Account search in app_mode: {app_mode}, found {len(enabled_servers)} servers")
+        else:
+            enabled_servers = config_manager.get_enabled_servers()
+            logger.info(f"Account search with no app_mode, found {len(enabled_servers)} servers")
+        
+        # Check if we have any servers available
+        if not enabled_servers or not isinstance(enabled_servers, dict):
+            logger.warning(f"No MCP servers available for account search (app_mode: {app_mode})")
+            return {"accounts": []}
+        
+        # Define tool patterns based on app_mode
+        if app_mode == "portfolio":
+            # Portfolio mode uses utilities_search_customer-lookup
+            tool_patterns = ["utilities_search_customer-lookup", "utilities_search"]
+        elif app_mode == "customer-success":
+            # Customer success mode uses customer-success_searchcustomer-lookup
+            tool_patterns = ["customer-success_searchcustomer-lookup", "searchcustomer"]
+        else:
+            # Try both patterns if no mode specified
+            tool_patterns = ["customer-lookup", "searchcustomer", "utilities_search"]
+        
+        logger.debug(f"Looking for tools matching patterns: {tool_patterns}")
+        
+        # Look for customer search tools
+        for server_id, server in enabled_servers.items():
+            logger.debug(f"Checking server {server_id} ({server.name}) with app_modes: {server.app_modes}")
+            
+            if hasattr(server, 'tools') and server.tools:
+                for tool_name in server.tools.keys():
+                    # Check if this tool matches any of our patterns
+                    if any(pattern in tool_name for pattern in tool_patterns):
+                        logger.info(f"Using customer search tool '{tool_name}' from server {server_id} ({server.name})")
+                        
+                        # Use search term directly
+                        arguments = {
+                            "search_term": q
+                        }
+                        
+                        # Execute the MCP tool
+                        async for result in mcp_manager.execute_tool(server_id, tool_name, arguments):
+                            if result["type"] == "tool_result":
+                                content = result["content"]
+                                
+                                # Parse the result - handle nested MCP response structure
+                                if isinstance(content, dict) and "text" in content:
+                                    try:
+                                        # Parse the JSON response from MCP tool
+                                        data = json.loads(content["text"])
+                                        
+                                        # Extract account data from the response
+                                        accounts = []
+                                        if "results" in data:
+                                            for result_item in data["results"]:
+                                                if result_item.get("type") == "tabular_data" and "data" in result_item:
+                                                    table_data = result_item["data"]
+                                                    if "values" in table_data and "columns" in table_data:
+                                                        # Get column names to map values correctly
+                                                        columns = [col["name"] for col in table_data["columns"]]
+                                                        
+                                                        for row_values in table_data["values"]:
+                                                            # Create a dict mapping column names to values
+                                                            row = dict(zip(columns, row_values))
+                                                            
+                                                            # Convert MCP result to account format
+                                                            account = {
+                                                                "name": row.get("account_holder_name", ""),
+                                                                "account": row.get("account_id", ""),
+                                                                "account_holder_name": row.get("account_holder_name", ""),
+                                                                "account_id": row.get("account_id", ""),
+                                                                "account_type": row.get("account_type", ""),
+                                                                "state": row.get("state", ""),
+                                                                "total_portfolio_value": 0  # Not provided by the lookup tool
+                                                            }
+                                                            accounts.append(account)
+                                        
+                                        logger.info(f"Found {len(accounts)} accounts for query '{q}'")
+                                        return {"accounts": accounts}
+                                        
+                                    except json.JSONDecodeError as e:
+                                        logger.error(f"Failed to parse MCP response for account search: {e}")
+                                        return {"accounts": []}
+                                else:
+                                    logger.warning(f"MCP response not in expected format: {content}")
+                                    return {"accounts": []}
+                            elif result["type"] == "error":
+                                logger.error(f"MCP tool error for account search: {result['error']}")
+                                return {"accounts": []}
+        
+        # No suitable MCP server found
+        logger.warning(f"No suitable customer search tool found for app_mode: {app_mode}")
+        logger.warning(f"Available tools: {[tool_name for server in enabled_servers.values() for tool_name in server.tools.keys()]}")
+        return {"accounts": []}
+        
+    except Exception as e:
+        logger.error(f"Error searching accounts: {e}", exc_info=True)
+        return {"accounts": []}
 
 @app.get("/account/{account_id}")
-async def get_account_details(account_id: str):
-    """Get detailed account information for the drilldown page"""
+async def get_account_details(account_id: str, app_mode: Optional[str] = None):
+    """Get detailed account information for the drilldown page using MCP tools"""
     try:
-        account_data = await es_data_client.get_account_details(account_id)
-        if account_data:
+        # Use portfolio mode as default if not specified
+        if not app_mode:
+            app_mode = "portfolio"
+            
+        # Get MCP servers for the specified app mode
+        enabled_servers = config_manager.get_servers_for_app_mode(app_mode)
+        if not enabled_servers:
+            raise HTTPException(status_code=503, detail=f"No MCP servers available for app mode: {app_mode}")
+        
+        # Find a server with account-details tool
+        account_details_tool = f"utilities_account_account-details" if app_mode == "portfolio" else f"customer-success_accountaccount-details"
+        server_with_tool = None
+        
+        for server_id, server in enabled_servers.items():
+            if account_details_tool in server.tools:
+                server_with_tool = (server_id, server)
+                break
+        
+        if not server_with_tool:
+            raise HTTPException(status_code=503, detail=f"No MCP server has account-details tool for app mode: {app_mode}")
+        
+        server_id, server = server_with_tool
+        logger.info(f"Using account-details tool from server {server_id}")
+        
+        # Execute the MCP tool using streaming approach
+        result_content = None
+        async for tool_result in mcp_manager.execute_tool(server_id, account_details_tool, {"account_number": account_id}):
+            if tool_result["type"] == "tool_result":
+                result_content = tool_result["content"]
+                break
+            elif tool_result["type"] == "error":
+                raise HTTPException(status_code=500, detail=f"MCP tool error: {tool_result['error']}")
+        
+        if result_content:
+            import json
+            
+            # Handle MCP response format - could be dict with "text" field or direct string
+            content_to_parse = None
+            if isinstance(result_content, dict) and "text" in result_content:
+                content_to_parse = result_content["text"]
+            elif isinstance(result_content, str):
+                content_to_parse = result_content
+            else:
+                content_to_parse = json.dumps(result_content)
+            
+            # Parse the content JSON
+            account_data = {}
+            try:
+                parsed_content = json.loads(content_to_parse)
+                
+                # Extract the actual account data from MCP response structure
+                if "results" in parsed_content and len(parsed_content["results"]) > 0:
+                    first_result = parsed_content["results"][0]
+                    if "data" in first_result and "values" in first_result["data"]:
+                        columns = first_result["data"]["columns"]
+                        values = first_result["data"]["values"]
+                        
+                        if len(values) > 0:
+                            # Convert tabular data to object
+                            for i, column in enumerate(columns):
+                                if i < len(values[0]):
+                                    account_data[column["name"]] = values[0][i]
+                        
+                # If we can't extract structured data, use parsed content as account data
+                if not account_data and isinstance(parsed_content, dict):
+                    account_data = parsed_content
+                    
+            except json.JSONDecodeError:
+                # If JSON parsing fails, create basic account data with the raw content
+                account_data = {"raw_content": content_to_parse}
+            
+            # Add missing fields that the frontend expects but MCP tool doesn't provide
+            # The MCP tool only returns: account_id, account_holder_name, account_type
+            # Frontend expects these field names: type, risk_profile, state
+            
+            # Map account_type to type (frontend expects 'type' not 'account_type')
+            if "account_type" in account_data and "type" not in account_data:
+                account_data["type"] = account_data["account_type"]
+            
+            # Set reasonable defaults for missing fields with correct field names
+            if "state" not in account_data:
+                account_data["state"] = "Active"  # Default status (frontend expects 'state')
+                
+            if "risk_profile" not in account_data:
+                # Determine risk level based on account type
+                account_type = account_data.get("account_type", "").lower()
+                if "retirement" in account_type:
+                    account_data["risk_profile"] = "Conservative"
+                elif "investment" in account_type or "trading" in account_type:
+                    account_data["risk_profile"] = "Moderate"
+                elif "savings" in account_type or "checking" in account_type:
+                    account_data["risk_profile"] = "Conservative"
+                else:
+                    account_data["risk_profile"] = "Moderate"  # Default
+            
+            # Now fetch holdings data using current-holdings tool
+            holdings_tool = f"utilities_portfolio_current-holdings" if app_mode == "portfolio" else f"customer-success_portfoliocurrent-holdings"
+            holdings_data = []
+            
+            # Find a server with current-holdings tool
+            holdings_server_with_tool = None
+            for server_id, server in enabled_servers.items():
+                if holdings_tool in server.tools:
+                    holdings_server_with_tool = (server_id, server)
+                    break
+            
+            if holdings_server_with_tool:
+                server_id, server = holdings_server_with_tool
+                logger.info(f"Using current-holdings tool from server {server_id}")
+                
+                try:
+                    # Execute the holdings MCP tool
+                    holdings_result_content = None
+                    async for tool_result in mcp_manager.execute_tool(server_id, holdings_tool, {"account_number": account_id}):
+                        if tool_result["type"] == "tool_result":
+                            holdings_result_content = tool_result["content"]
+                            break
+                        elif tool_result["type"] == "error":
+                            logger.warning(f"Holdings MCP tool error: {tool_result['error']}")
+                            break
+                    
+                    if holdings_result_content:
+                        # Parse holdings response
+                        holdings_content_to_parse = None
+                        if isinstance(holdings_result_content, dict) and "text" in holdings_result_content:
+                            holdings_content_to_parse = holdings_result_content["text"]
+                        elif isinstance(holdings_result_content, str):
+                            holdings_content_to_parse = holdings_result_content
+                        else:
+                            holdings_content_to_parse = json.dumps(holdings_result_content)
+                        
+                        try:
+                            holdings_parsed_content = json.loads(holdings_content_to_parse)
+                            
+                            # Extract holdings data from MCP response structure
+                            if "results" in holdings_parsed_content and len(holdings_parsed_content["results"]) > 0:
+                                first_result = holdings_parsed_content["results"][0]
+                                if "data" in first_result and "values" in first_result["data"]:
+                                    columns = first_result["data"]["columns"]
+                                    values = first_result["data"]["values"]
+                                    
+                                    # Convert tabular data to array of holdings objects
+                                    holdings_data = []
+                                    for row in values:
+                                        holding = {}
+                                        for i, column in enumerate(columns):
+                                            if i < len(row):
+                                                holding[column["name"]] = row[i]
+                                        holdings_data.append(holding)
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse holdings response: {holdings_content_to_parse}")
+                except Exception as e:
+                    logger.warning(f"Error fetching holdings for account {account_id}: {e}")
+            
+            # Add holdings data to account response
+            account_data["holdings"] = holdings_data
+            
             return account_data
         else:
             raise HTTPException(status_code=404, detail="Account not found")
+            
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Error fetching account data")
@@ -210,6 +497,99 @@ async def get_account_news_reports(account_id: str, time_period: int = 72, time_
     except Exception as e:
         logger.error(f"Error fetching news/reports for account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Error fetching news/reports data")
+
+@app.get("/account/{account_id}/trades")
+async def get_account_trades(account_id: str, app_mode: Optional[str] = None):
+    """Get recent trades for an account using MCP tools"""
+    try:
+        # Use portfolio mode as default if not specified
+        if not app_mode:
+            app_mode = "portfolio"
+            
+        # Get MCP servers for the specified app mode
+        enabled_servers = config_manager.get_servers_for_app_mode(app_mode)
+        if not enabled_servers:
+            raise HTTPException(status_code=503, detail=f"No MCP servers available for app mode: {app_mode}")
+        
+        # Find a server with recent-trades tool
+        trades_tool = f"utilities_trading_recent-trades" if app_mode == "portfolio" else f"customer-success_tradingrecent-trades"
+        server_with_tool = None
+        
+        for server_id, server in enabled_servers.items():
+            if trades_tool in server.tools:
+                server_with_tool = (server_id, server)
+                break
+        
+        if not server_with_tool:
+            raise HTTPException(status_code=503, detail=f"No MCP server has recent-trades tool for app mode: {app_mode}")
+        
+        server_id, server = server_with_tool
+        logger.info(f"Using recent-trades tool from server {server_id}")
+        
+        # Execute the MCP tool using streaming approach
+        result_content = None
+        # Use different time_period formats based on app mode - both need TO_TIMEDURATION format
+        # Use 8766 hours as specified
+        time_period_value = "8766 HOURS"
+        async for tool_result in mcp_manager.execute_tool(server_id, trades_tool, {"account_number": account_id, "time_period": time_period_value}):
+            if tool_result["type"] == "tool_result":
+                result_content = tool_result["content"]
+                break
+            elif tool_result["type"] == "error":
+                raise HTTPException(status_code=500, detail=f"MCP tool error: {tool_result['error']}")
+        
+        if result_content:
+            import json
+            
+            # Handle MCP response format - could be dict with "text" field or direct string
+            content_to_parse = None
+            if isinstance(result_content, dict) and "text" in result_content:
+                content_to_parse = result_content["text"]
+            elif isinstance(result_content, str):
+                content_to_parse = result_content
+            else:
+                return {"trades": result_content}
+            
+            # Parse the content JSON
+            try:
+                parsed_content = json.loads(content_to_parse)
+                
+                # Convert MCP tabular data to frontend-expected format
+                if "results" in parsed_content and len(parsed_content["results"]) > 0:
+                    result = parsed_content["results"][0]
+                    if "data" in result and "columns" in result["data"] and "values" in result["data"]:
+                        # Extract column names
+                        columns = [col["name"] for col in result["data"]["columns"]]
+                        values = result["data"]["values"]
+                        
+                        # Convert tabular data to array of objects
+                        trades = []
+                        for value_row in values:
+                            trade = {}
+                            for i, col_name in enumerate(columns):
+                                if i < len(value_row):
+                                    trade[col_name] = value_row[i]
+                            trades.append(trade)
+                        
+                        return {"trades": trades}
+                
+                # Fallback: return raw content if structure doesn't match expected format
+                return parsed_content
+                
+            except json.JSONDecodeError:
+                # If JSON parsing fails, return raw content
+                return {"raw_content": content_to_parse}
+            
+            # Return raw content if it's not parseable
+            return result_content
+        else:
+            return {"trades": []}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching trades for account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching trades data")
 
 @app.post("/agent/start_day")
 async def start_day():
@@ -518,11 +898,12 @@ Provide a professional summary focusing on financial relevance, market implicati
         logger.error(f"Error in article summarization: {e}")
         yield f"Error generating summary: {str(e)}"
 
-async def chat_stream_generator(prompt: str, session_id: Optional[str] = None):
+async def chat_stream_generator(prompt: str, session_id: Optional[str] = None, app_mode: Optional[str] = None):
     """
     Multi-turn conversation generator with hybrid conversation persistence.
     """
     print(f"--- USER PROMPT ---: {prompt}")
+    print(f"--- APP MODE ---: {app_mode}")
     
     # Handle conversation session
     if session_id:
@@ -543,7 +924,7 @@ async def chat_stream_generator(prompt: str, session_id: Optional[str] = None):
     
     yield f"Session ID: {session_id}\n\n"
     
-    dynamic_tools = get_all_tool_definitions()
+    dynamic_tools = get_all_tool_definitions(app_mode)
     max_turns = 5  # Prevent infinite loops
     turn = 0
     
@@ -594,7 +975,11 @@ async def chat_stream_generator(prompt: str, session_id: Optional[str] = None):
         
         # Execute tools and build tool results for next turn
         tool_results = []
-        enabled_servers = config_manager.get_enabled_servers()
+        # Get servers filtered by app_mode if provided
+        if app_mode:
+            enabled_servers = config_manager.get_servers_for_app_mode(app_mode)
+        else:
+            enabled_servers = config_manager.get_enabled_servers()
         
         # Add assistant message with tool calls to conversation
         assistant_message = {"role": "assistant", "content": assistant_response}
@@ -706,7 +1091,9 @@ async def chat_stream_generator(prompt: str, session_id: Optional[str] = None):
 async def chat_query(query: Dict[str, str]):
     prompt = query.get("query", "")
     session_id = query.get("session_id")  # Optional session ID for conversation persistence
-    return StreamingResponse(chat_stream_generator(prompt, session_id), media_type="text/plain")
+    app_mode = query.get("app_mode")  # Optional app mode for filtering MCP servers
+    logger.info(f"Chat query received with app_mode: {app_mode}")
+    return StreamingResponse(chat_stream_generator(prompt, session_id, app_mode), media_type="text/plain")
 
 @app.post("/article/summarize")
 async def summarize_article(request: Dict[str, str]):
@@ -859,10 +1246,15 @@ async def refresh_server_tools(server_id: str):
         raise HTTPException(status_code=500, detail=f"Error refreshing server tools: {e}")
 
 @app.get("/tools")
-async def get_available_tools():
-    """Get all available tools from MCP servers"""
+async def get_available_tools(app_mode: Optional[str] = None):
+    """Get all available tools from MCP servers, optionally filtered by app mode"""
     tools = []
-    enabled_servers = config_manager.get_enabled_servers()
+    
+    # Filter by app_mode if provided
+    if app_mode:
+        enabled_servers = config_manager.get_servers_for_app_mode(app_mode)
+    else:
+        enabled_servers = config_manager.get_enabled_servers()
     
     for server_id, server in enabled_servers.items():
         for tool_name, tool in server.tools.items():

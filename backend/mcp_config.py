@@ -125,7 +125,8 @@ class MCPConfigManager:
                         }
                     },
                     "last_connected": None,
-                    "connection_status": "unknown"
+                    "connection_status": "unknown",
+                    "app_modes": ["both"]
                 }
             }
         }
@@ -210,7 +211,8 @@ class MCPConfigManager:
                     connection_status=server_data.get("connection_status", "unknown"),
                     conversation_field=server_data.get("conversation_field"),
                     conversation_location=server_data.get("conversation_location", "response"),
-                    use_for_main_page=server_data.get("use_for_main_page", False)
+                    use_for_main_page=server_data.get("use_for_main_page", False),
+                    app_modes=server_data.get("app_modes", ["both"])
                 )
                 
                 servers[server_id] = server
@@ -279,6 +281,15 @@ class MCPConfigManager:
         """Get only enabled MCP servers"""
         all_servers = self.get_all_servers()
         return {sid: server for sid, server in all_servers.items() if server.enabled}
+    
+    def get_servers_for_app_mode(self, app_mode: str) -> Dict[str, MCPServer]:
+        """Get enabled MCP servers available for the specified app mode"""
+        enabled_servers = self.get_enabled_servers()
+        return {
+            server_id: server
+            for server_id, server in enabled_servers.items()
+            if app_mode in server.app_modes or "both" in server.app_modes
+        }
     
     def get_main_page_servers(self) -> Dict[str, MCPServer]:
         """Get enabled MCP servers designated for main page data"""

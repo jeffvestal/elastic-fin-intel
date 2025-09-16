@@ -21,7 +21,8 @@ import {
   InputAdornment,
   IconButton,
   Skeleton,
-  useTheme
+  useTheme,
+  Autocomplete
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { alpha } from '@mui/material/styles';
@@ -35,6 +36,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import MetricCard from '../components/MetricCard';
 import MiniChart from '../components/MiniChart';
 import PageTransition from '../components/PageTransition';
+import { useMCPNotification } from '../contexts/MCPNotificationContext';
+import { useAppMode } from '../contexts/AppModeContext';
 import axios from 'axios';
 
 const AccountsList = () => {
@@ -42,13 +45,84 @@ const AccountsList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchOptions, setSearchOptions] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'total_portfolio_value', direction: 'desc' });
   const navigate = useNavigate();
   const theme = useTheme();
+  const { showMCPTool, hideMCPTool } = useMCPNotification();
+  const { appMode } = useAppMode();
 
   useEffect(() => {
     fetchAccounts();
   }, []);
+
+  // MCP account search functionality
+  const searchAccounts = async (query) => {
+    if (query.length < 3) return [];
+    
+    // Show MCP tool notification - adjust tool name based on app mode
+    const toolName = appMode === 'portfolio' ? 'utilities_search_customer-lookup' : 'customer-success_searchcustomer-lookup';
+    const serverName = appMode === 'portfolio' ? 'Elastic Financial Assistant' : 'Elastic Customer Success';
+    
+    const toolId = showMCPTool(
+      toolName, 
+      'Searching for accounts matching your query', 
+      serverName,
+      { search_term: query }
+    );
+    
+    try {
+      // Add app_mode parameter to the search request
+      const url = `http://localhost:8000/account/search?q=${encodeURIComponent(query)}${appMode ? `&app_mode=${appMode}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('Account search failed:', response.status);
+        hideMCPTool(toolId, { error: `HTTP ${response.status}` }, 'error');
+        return [];
+      }
+      
+      const data = await response.json();
+      
+      // Check if the MCP tool returned an error
+      if (data.error) {
+        console.warn('MCP tool error:', data.error);
+        hideMCPTool(toolId, { error: data.error }, 'error');
+        return [];
+      }
+      
+      // Success - hide the tool with result
+      hideMCPTool(toolId, { accountsFound: data.accounts?.length || 0 }, 'completed');
+      return data.accounts || [];
+    } catch (error) {
+      console.error('Error searching accounts:', error);
+      hideMCPTool(toolId, { error: error.message }, 'error');
+      return [];
+    }
+  };
+
+  // Handle account selection from autocomplete
+  const handleAccountSelect = (event, newValue) => {
+    setSelectedAccount(newValue);
+    if (newValue) {
+      // Navigate to the selected account
+      handleAccountClick(newValue.account_id);
+    }
+  };
+
+  // Debounced search for autocomplete
+  useEffect(() => {
+    const delayedSearch = setTimeout(async () => {
+      if (searchTerm.length >= 3) {
+        const results = await searchAccounts(searchTerm);
+        setSearchOptions(results);
+      } else {
+        setSearchOptions([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayedSearch);
+  }, [searchTerm]);
 
   const fetchAccounts = async () => {
     try {
@@ -150,6 +224,8 @@ const AccountsList = () => {
 
   const handleClearSearch = () => {
     setSearchTerm('');
+    setSelectedAccount(null);
+    setSearchOptions([]);
   };
 
   return (
@@ -198,45 +274,102 @@ const AccountsList = () => {
               </Box>
             </Box>
 
-            {/* Search */}
-            <TextField
+            {/* Search with MCP Auto-complete */}
+            <Autocomplete
               fullWidth
-              variant="outlined"
-              placeholder="Search accounts by name, ID, or state..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: searchTerm && (
-                  <InputAdornment position="end">
-                    <IconButton onClick={handleClearSearch} edge="end" size="small">
-                      <ClearIcon />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-                sx: {
-                  backgroundColor: theme.palette.background.paper,
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.action.hover, 0.04),
-                  },
-                }
+              options={searchOptions}
+              value={selectedAccount}
+              onChange={handleAccountSelect}
+              inputValue={searchTerm}
+              onInputChange={(event, newInputValue) => {
+                setSearchTerm(newInputValue);
               }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: 2,
-                  transition: 'all 0.2s ease-in-out',
-                  '&:hover': {
-                    boxShadow: theme.shadows[2],
-                  },
-                  '&.Mui-focused': {
-                    boxShadow: theme.shadows[4],
-                  },
-                },
+              getOptionLabel={(option) => {
+                if (typeof option === 'string') return option;
+                return `${option.account_holder_name} (${option.account_id}) - ${option.state}`;
               }}
+              renderOption={(props, option) => (
+                <Box component="li" {...props}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
+                    <Box
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.success.main} 100%)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontWeight: 600,
+                        fontSize: '0.75rem'
+                      }}
+                    >
+                      {option.account_holder_name?.charAt(0) || 'A'}
+                    </Box>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography variant="body2" fontWeight="600">
+                        {option.account_holder_name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {option.account_id} • {option.state} • {formatCurrency(option.total_portfolio_value)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              )}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder="Search accounts by name, ID, or state... (type 3+ characters)"
+                  variant="outlined"
+                  InputProps={{
+                    ...params.InputProps,
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon color="action" />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <>
+                        {searchTerm && (
+                          <InputAdornment position="end">
+                            <IconButton onClick={handleClearSearch} edge="end" size="small">
+                              <ClearIcon />
+                            </IconButton>
+                          </InputAdornment>
+                        )}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                    sx: {
+                      backgroundColor: theme.palette.background.paper,
+                      '&:hover': {
+                        backgroundColor: alpha(theme.palette.action.hover, 0.04),
+                      },
+                    }
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      transition: 'all 0.2s ease-in-out',
+                      '&:hover': {
+                        boxShadow: theme.shadows[2],
+                      },
+                      '&.Mui-focused': {
+                        boxShadow: theme.shadows[4],
+                      },
+                    },
+                  }}
+                />
+              )}
+              noOptionsText={
+                searchTerm.length >= 3 
+                  ? "No accounts found matching your search" 
+                  : "Type 3 or more characters to search accounts"
+              }
+              loading={searchTerm.length >= 3 && searchOptions.length === 0}
+              loadingText="Searching accounts..."
             />
           </Box>
         </motion.div>

@@ -80,12 +80,23 @@ const MCPToolNotification = () => {
   const [activeTab, setActiveTab] = useState(0);
   
   try {
+    // Safety checks for context values
+    if (!activeTools || !executionHistory || !getExecutionStats) {
+      console.warn('🔧 MCP Notification: Missing context values, component not ready');
+      return null;
+    }
+
+    // Ensure activeTools is a Map before converting
+    if (!(activeTools instanceof Map)) {
+      console.error('🔧 MCP Notification: activeTools is not a Map:', activeTools);
+      return null;
+    }
+
     // Convert Map to array for rendering
     const toolsArray = Array.from(activeTools.entries()).map(([id, tool]) => ({
       id,
       ...tool
     }));
-
 
     // Don't render if no active tools and no history to show
     if (toolsArray.length === 0 && (!showExecutionHistory || executionHistory.length === 0)) {
@@ -396,7 +407,7 @@ const MCPToolNotification = () => {
           </List>
           
           <Divider />
-          <Box sx={{ p: 1.5, bgcolor: alpha('action.hover', 0.5) }}>
+          <Box sx={{ p: 1.5, bgcolor: (theme) => alpha(theme.palette.action.hover, 0.5) }}>
             <Typography variant="caption" color="text.secondary" display="flex" alignItems="center" justifyContent="space-between">
               <Box display="flex" alignItems="center" gap={0.5}>
                 <SettingsIcon sx={{ fontSize: 12 }} />
@@ -416,19 +427,11 @@ const MCPToolNotification = () => {
     );
   } catch (error) {
     console.error('🔧 MCP Notification Component Error:', error);
-    return (
-      <MCPFab
-        sx={{ 
-          backgroundColor: 'error.main',
-          '&:hover': {
-            backgroundColor: 'error.dark',
-          }
-        }}
-        onClick={() => console.log('MCP Tools Error - Check console')}
-      >
-        ⚠️
-      </MCPFab>
-    );
+    console.error('🔧 MCP Notification Error Context:', { activeTools, executionHistory, showExecutionHistory });
+    
+    // Don't show error icon unless there's actually an error worth showing
+    // Most context initialization errors should be handled by the safety checks above
+    return null;
   }
 };
 
