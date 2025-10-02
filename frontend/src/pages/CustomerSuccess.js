@@ -105,8 +105,8 @@ const CustomerSuccess = () => {
       }
       
       // Success - hide the tool with result
-      hideMCPTool(toolId, { customersFound: data.customers?.length || 0 }, 'completed');
-      return data.customers || [];
+      hideMCPTool(toolId, { customersFound: data.accounts?.length || 0 }, 'completed');
+      return data.accounts || [];
     } catch (error) {
       console.error('Error searching customers:', error);
       hideMCPTool(toolId, { error: error.message }, 'error');
@@ -122,12 +122,12 @@ const CustomerSuccess = () => {
     const toolIds = {
       account: showMCPTool('customer-success_accountaccount-details', 'Getting account details', 'ES Customer Success', { account_number: accountNumber }),
       holdings: showMCPTool('customer-success_portfoliocurrent-holdings', 'Loading current holdings', 'ES Customer Success', { account_number: accountNumber }),
-      trades: showMCPTool('customer-success_tradingrecent-trades', 'Fetching recent trades', 'ES Customer Success', { account_number: accountNumber, time_period: '30 days' })
+      trades: showMCPTool('customer-success_tradingrecent-trades', 'Fetching recent trades', 'ES Customer Success', { account_number: accountNumber })
     };
     
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/customer/${encodeURIComponent(accountNumber)}`);
+      const response = await fetch(`http://localhost:8000/account/${encodeURIComponent(accountNumber)}?app_mode=customer-success`);
       if (!response.ok) {
         console.error('Failed to fetch customer details:', response.status);
         // Hide all tools with error
@@ -467,7 +467,7 @@ const CustomerSuccess = () => {
                   {option.name}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {option.account} • {option.email}
+                  {option.account} • {option.account_type || 'N/A'}
                 </Typography>
               </Stack>
               </Box>

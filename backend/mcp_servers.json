@@ -343,22 +343,122 @@
         }
       },
       "transport": "http",
-      "url": "https://elastic-customer-success-b772ae.kb.us-central1.gcp.elastic.cloud:443/api/chat/mcp",
+      "url": "https://elastic-customer-success-b772ae.kb.us-central1.gcp.elastic.cloud:443/api/agent_builder/mcp",
       "use_for_main_page": false
     },
-    "new-server-1757962251729": {
+    "new-server-1758439814861": {
       "api_key": "Yk1vQVFKa0J1a0VlSDFNdElELXY6Rm9TOEotMVQ5bU9vT0VTRGZ0eG1WQQ==",
       "app_modes": [
-        "portfolio"
+        "both"
       ],
       "connection_status": "disconnected",
       "conversation_field": null,
       "conversation_location": "response",
       "enabled": true,
-      "id": "new-server-1757962251729",
-      "last_connected": 1758031033.59425,
-      "name": "Elastic Financial Assistant",
+      "id": "new-server-1758439814861",
+      "last_connected": 1758439816.292562,
+      "name": "Elastic Finance MCP",
       "tools": {
+        "customer_success_lookup_trades_by_name": {
+          "description": "This tool will return all the trades for a customer by providing the customer's name as an input parameter",
+          "enabled": true,
+          "name": "customer_success_lookup_trades_by_name",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "account_name": {
+                "description": "The customer's full or partial name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_name"
+            ],
+            "type": "object"
+          }
+        },
+        "financial_analyst_performance_history": {
+          "description": "Calculates the total portfolio performance over time        \n",
+          "enabled": true,
+          "name": "financial_analyst_performance_history",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "account_id": {
+                "description": "The customer's unique identifier",
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_id"
+            ],
+            "type": "object"
+          }
+        },
+        "financial_analyst_portfolio_performance": {
+          "description": "Calculates the total portfolio value, purchase value, and overall gain or loss for a specific account. Use this to provide a top-level performance summary for a customer's portfolio",
+          "enabled": true,
+          "name": "financial_analyst_portfolio_performance",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "account_id": {
+                "description": "The unique identifier for the customer's account",
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_id"
+            ],
+            "type": "object"
+          }
+        },
+        "financial_analyst_trading_asset_trade_history": {
+          "description": "Retrieves the recent trade activity for a specific stock symbol within a customer's account. Use this after identifying the stock symbol of interest",
+          "enabled": true,
+          "name": "financial_analyst_trading_asset_trade_history",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "asset_symbol": {
+                "description": "the specific stock symbol (e.g., AAPL, ESTC) for which to retrieve trade history",
+                "type": "string"
+              },
+              "search_term": {
+                "description": "The customer's name to search for",
+                "type": "string"
+              }
+            },
+            "required": [
+              "search_term",
+              "asset_symbol"
+            ],
+            "type": "object"
+          }
+        },
+        "financial_analyst_trading_recent_trades": {
+          "description": "Get recent trading activity for a customer's account including buy/sell transactions, quantities,   prices, and dates. Use this to help customers understand their recent trading history or troubleshoot  trade-related questions.",
+          "enabled": true,
+          "name": "financial_analyst_trading_recent_trades",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "account_id": {
+                "description": "The customer's account identifier",
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_id"
+            ],
+            "type": "object"
+          }
+        },
         "financial_indices_schema": {
           "description": "This tool provides detailed schema and relationship information for a suite of financial indices, enabling complex data retrieval and analysis.\n\n---\n**Index 1: financial_accounts**\nThis index contains fundamental data about customer accounts.\n\nPrimary Fields:\n- `account_id` (keyword): The unique ID for each account. This is the primary key for joining with `financial_holdings` and `financial_trades`.\n- `account_holder_name` (text): The full name of the account holder. Can be used with `CONTAINS` for lookups.\n- `account_type` (keyword): The type of account (e.g., checking, savings, investment).\n- `risk_profile` (keyword): The assessed risk level of the account.\n- `last_updated` (date): The timestamp of the last update to the account record.\n\nPurpose: Use this index to find a specific customer or to filter queries based on account details like name or risk profile.\n\n---\n**Index 2: financial_asset_details**\nThis index contains static and real-time information about individual financial assets.\n\nPrimary Fields:\n- `symbol` (keyword): The stock ticker (e.g., AAPL, GOOGL). This is the key for joining with `financial_holdings`, `financial_trades`, and `financial_news`.\n- `asset_name` (text): The full company name.\n- `sector` (keyword): The industry sector of the asset (e.g., Technology, Healthcare).\n- `current_price` (float): The current market price of the asset.\n- `market_cap` (float): The market capitalization.\n- `volume` (long): The trading volume.\n\nPurpose: Use this index to retrieve details about specific stocks, get current prices, or filter by sector.\n\n---\n**Index 3: financial_holdings**\nThis index links a customer's account to the assets they currently hold.\n\nPrimary Fields:\n- `account_id` (keyword): The unique ID of the account. Joins with `financial_accounts`.\n- `symbol` (keyword): The ticker of the held asset. Joins with `financial_asset_details`.\n- `quantity` (float): The number of units of the asset held.\n- `purchase_price` (float): The price at which the asset was acquired.\n- `is_high_value` (boolean): A flag indicating if the holding is considered a high-value position.\n\nPurpose: This is the core index for analyzing a customer's portfolio, including calculating portfolio value and tracking individual positions.\n\n---\n**Index 4: financial_trades**\nThis index contains a log of all executed buy and sell transactions.\n\nPrimary Fields:\n- `trade_id` (keyword): The unique ID for each trade.\n- `account_id` (keyword): The account that executed the trade. Joins with `financial_accounts`.\n- `symbol` (keyword): The ticker of the traded asset. Joins with `financial_asset_details`.\n- `trade_type` (keyword): The type of trade (e.g., 'BUY', 'SELL').\n- `quantity` (float): The number of units traded.\n- `execution_timestamp` (date): The time of the trade.\n- `trade_cost` (float): The total cost or proceeds of the trade.\n\nPurpose: Use this index for trade history, activity summaries, and analysis of trading patterns.\n\n---\n**Index 5: financial_news**\nThis index contains news articles related to financial assets, with sentiment analysis.\n\nPrimary Fields:\n- `title` (text): The headline of the news article.\n- `symbols` (keyword): An array of stock tickers mentioned in the article.\n- `published_date` (date): The publication date of the article.\n- `sentiment` (keyword): The overall sentiment of the article (e.g., 'positive', 'negative').\n\nPurpose: Use this index for market research, sentiment analysis, and finding news related to specific companies.\n\n---\n**Index 6: financial_reports**\nThis index contains research reports and earnings reports.\n\nPrimary Fields:\n- `report_id` (keyword): Unique identifier for the report.\n- `primary_symbol` (keyword): The main stock ticker discussed in the report.\n- `report_date` (date): The date the report was published.\n- `report_type` (keyword): The type of report (e.g., 'earnings', 'analyst').\n- `sentiment` (keyword): The sentiment of the report ('positive', 'negative', 'neutral').\n\nPurpose: Use this index to find and analyze specific types of financial research or reports.\n\n---\n**How the Indices Connect**\n\n* **`financial_accounts`** links to **`financial_holdings`** and **`financial_trades`** via the `account_id` field.\n* **`financial_asset_details`** links to **`financial_holdings`**, **`financial_trades`**, **`financial_news`**, and **`financial_reports`** via the `symbol` field.\n* **`financial_holdings`** and **`financial_trades`** are the key transactional indices that link accounts (`account_id`) to assets (`symbol`).\n",
           "enabled": true,
@@ -538,6 +638,25 @@
             "type": "object"
           }
         },
+        "test": {
+          "description": "account portfolio performance per day",
+          "enabled": true,
+          "name": "test",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "account_id": {
+                "description": "customer's account identifier",
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_id"
+            ],
+            "type": "object"
+          }
+        },
         "utilities_account_account-details": {
           "description": "Get comprehensive account information for a specific customer including account balance, type,  status, risk level, and account creation date. Use this when you have a customer's account number and need their  full account profile.",
           "enabled": true,
@@ -597,6 +716,80 @@
             "required": [
               "symbol"
             ],
+            "type": "object"
+          }
+        },
+        "utilities_metrics_account_distribution_by_risk": {
+          "description": "Returns the account breakdown by risk rating",
+          "enabled": true,
+          "name": "utilities_metrics_account_distribution_by_risk",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "utilities_metrics_monthly_trade_activity": {
+          "description": "Returns Monthly Trade Activity",
+          "enabled": true,
+          "name": "utilities_metrics_monthly_trade_activity",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "utilities_metrics_portfolio_performance_history": {
+          "description": "This will return one year's worth of the portfolio's performance as dollar value per month",
+          "enabled": true,
+          "name": "utilities_metrics_portfolio_performance_history",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {
+              "account_id": {
+                "description": "customer's account identifier",
+                "type": "string"
+              }
+            },
+            "required": [
+              "account_id"
+            ],
+            "type": "object"
+          }
+        },
+        "utilities_metrics_total_aum": {
+          "description": "Total Assets Under Management Value",
+          "enabled": true,
+          "name": "utilities_metrics_total_aum",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "utilities_overview_sector_distribution": {
+          "description": "Return sector distribution by total value",
+          "enabled": true,
+          "name": "utilities_overview_sector_distribution",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "utilities_overview_top_performers": {
+          "description": "Returns the top 10 performers by portfolio value",
+          "enabled": true,
+          "name": "utilities_overview_top_performers",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false,
+            "properties": {},
             "type": "object"
           }
         },
@@ -670,18 +863,13 @@
             "$schema": "http://json-schema.org/draft-07/schema#",
             "additionalProperties": false,
             "properties": {
-              "account_number": {
+              "account_id": {
                 "description": "The account number to get trades for",
-                "type": "string"
-              },
-              "time_period": {
-                "description": "How far back to look for trades. Format: 'X HOURS', 'X MINUTES', 'X SECONDS'. Default should be '8766 HOURS'. DO NOT USE 'DAYS', 'YEARS', 'MONTHS' - only HOURS/MINUTES/SECONDS are supported by TO_TIMEDURATION.",
                 "type": "string"
               }
             },
             "required": [
-              "account_number",
-              "time_period"
+              "account_id"
             ],
             "type": "object"
           }
@@ -692,6 +880,6 @@
       "use_for_main_page": false
     }
   },
-  "updated_at": 1758031033.656971,
+  "updated_at": 1758439816.67297,
   "version": "1.0"
 }

@@ -45,7 +45,11 @@ const AccountDrilldown = () => {
 
   useEffect(() => {
     const fetchAccount = async () => {
-      const response = await axios.get(`http://localhost:8000/account/${accountId}`);
+      // Determine app mode based on current location
+      const isCustomerSuccess = location.pathname.includes('/customer-success') || location.state?.fromAlerts;
+      const appModeParam = isCustomerSuccess ? '?app_mode=customer-success' : '';
+      
+      const response = await axios.get(`http://localhost:8000/account/${accountId}${appModeParam}`);
       setAccount(response.data);
       
       // Set account context for chat
@@ -78,7 +82,11 @@ const AccountDrilldown = () => {
       setTradeHistoryLoading(true);
       setTradeHistoryError(null);
       try {
-        const response = await axios.get(`http://localhost:8000/account/${accountId}/trades`);
+        // Determine app mode based on current location
+        const isCustomerSuccess = location.pathname.includes('/customer-success') || location.state?.fromAlerts;
+        const appModeParam = isCustomerSuccess ? '?app_mode=customer-success' : '';
+        
+        const response = await axios.get(`http://localhost:8000/account/${accountId}/trades${appModeParam}`);
         setTradeHistory(response.data);
       } catch (err) {
         console.error('Error fetching trade history:', err);
@@ -429,8 +437,8 @@ const AccountDrilldown = () => {
                         <TableCell><strong>Symbol</strong></TableCell>
                         <TableCell><strong>Date</strong></TableCell>
                         <TableCell align="right"><strong>Quantity</strong></TableCell>
-                        <TableCell align="right"><strong>Price</strong></TableCell>
-                        <TableCell align="right"><strong>Total</strong></TableCell>
+                        <TableCell align="right"><strong>Execution Price</strong></TableCell>
+                        <TableCell align="right"><strong>Trade Cost</strong></TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -445,19 +453,19 @@ const AccountDrilldown = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            {trade.purchase_date ? new Date(trade.purchase_date).toLocaleDateString() : 'N/A'}
+                            {trade.execution_timestamp ? new Date(trade.execution_timestamp).toLocaleDateString() : 'N/A'}
                           </TableCell>
                           <TableCell align="right">
                             {trade.quantity?.toLocaleString() || 'N/A'}
                           </TableCell>
                           <TableCell align="right">
-                            ${typeof trade.purchase_price === 'number' ? 
-                              trade.purchase_price.toFixed(2) : 
+                            ${typeof trade.execution_price === 'number' ? 
+                              trade.execution_price.toFixed(2) : 
                               'N/A'}
                           </TableCell>
                           <TableCell align="right">
-                            ${(typeof trade.purchase_price === 'number' && typeof trade.quantity === 'number') ? 
-                              (trade.purchase_price * trade.quantity).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 
+                            ${typeof trade.trade_cost === 'number' ? 
+                              trade.trade_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 
                               'N/A'}
                           </TableCell>
                         </TableRow>
